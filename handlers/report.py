@@ -84,3 +84,45 @@ async def _notify_managers(message: Message, user_id: int, lesson_id: str,
         )
     except Exception as e:
         logger.error("Failed to notify managers: %s", e)
+
+
+async def remind_review(message: Message, state: dict, telegram_id: int, **kwargs):
+    """Resend pending report to manager group as a reminder (triggered by user)."""
+    module = state.get("current_module", "")
+    lesson_num = module.replace("m", "").replace("_lesson", "")
+    lesson_id = f"lesson_{lesson_num}"
+
+    report = await db.get_lesson_report(telegram_id, lesson_id)
+    if not report:
+        await message.answer("⚠️ Отчёт не найден. Возможно, куратор уже проверяет его.")
+        return
+
+    user = message.chat
+    first_name = user.first_name or "боец"
+    username = f"@{user.username}" if getattr(user, "username", None) else str(telegram_id)
+    rating = report.get("rating")
+    report_text = report.get("report_text", "")
+    rating_text = f"{rating}/10" if rating is not None else "не указана"
+    truncated = report_text[:500] + "..." if len(report_text) > 500 else report_text
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="✅ Принять", callback_data=f"approve_report_{telegram_id}_{lesson_id}"),
+        InlineKeyboardButton(text="❌ Отклонить", callback_data=f"reject_report_{telegram_id}_{lesson_id}"),
+    ]])
+
+    try:
+        await message.bot.send_message(
+            chat_id=settings.MANAGER_GROUP_CHAT_ID,
+            text=(
+                f"🔔 *НАПОМИНАНИЕ*\n\n"
+                f"*Участник:* {first_name} ({username})\n"
+                f"*Урок:* {lesson_num}\n"
+                f"*Оценка состояния:* {rating_text}\n\n"
+                f"*Отчёт:*\n{truncated}"
+            ),
+            reply_markup=keyboard,
+        )
+        await message.answer("✅ Напоминание отправлено куратору.")
+    except Exception as e:
+        logger.error("Failed to send reminder to managers: %s", e)
+        await message.answer("⚠️ Не удалось отправить напоминание. Попробуй позже.")

@@ -32,21 +32,11 @@ async def handle(message: Message, callback_data: str, state: dict,
     if callback_data == "return_to_lesson":
         return_module = state.get("ai_chat_return_module") or "idle"
         await db.update_user_state(telegram_id, current_module=return_module)
-        if return_module and return_module.startswith("m"):
-            lesson_num = return_module.replace("m", "").replace("_lesson", "")
-            keyboard = InlineKeyboardMarkup(inline_keyboard=[[
-                InlineKeyboardButton(text=f"▶️ Урок {lesson_num}", callback_data="lesson_continue"),
-            ]])
-        elif return_module == "complete":
-            keyboard = InlineKeyboardMarkup(inline_keyboard=[[
-                InlineKeyboardButton(text="▶️ Начать курс", callback_data="start_course"),
-            ]])
-        else:
-            keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="▶️ Начать программу", callback_data="onboarding_accept")],
-                [InlineKeyboardButton(text="💬 Поговорить с психологом", callback_data="chat_psychologist")],
-            ])
-        await message.answer("✅ Возвращаемся.", reply_markup=keyboard)
+        from handlers.onboarding import handle_return_user
+        await handle_return_user(message=message, telegram_id=telegram_id,
+                                  first_name=state.get("ptsd_users", {}).get("first_name", "боец"),
+                                  state={**state, "current_module": return_module},
+                                  **{k: v for k, v in kwargs.items()})
         return
 
     # Regular message in ai_chat mode

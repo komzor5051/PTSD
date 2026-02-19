@@ -119,6 +119,19 @@ async def get_pending_reports() -> list[dict]:
     return result.data
 
 
+async def get_lesson_report(user_id: int, lesson_id: str) -> dict | None:
+    client = get_client()
+    result = await _run(lambda: client.table("ptsd_lesson_reports")
+        .select("*")
+        .eq("user_id", user_id)
+        .eq("lesson_id", lesson_id)
+        .eq("status", "pending")
+        .order("created_at", desc=True)
+        .limit(1)
+        .execute())
+    return result.data[0] if result.data else None
+
+
 async def rpc_approve_report(user_id: int, lesson_id: str, manager_id: int, comment: str) -> None:
     client = get_client()
     await _run(lambda: client.rpc("approve_lesson_report", {

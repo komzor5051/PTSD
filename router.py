@@ -64,6 +64,10 @@ def _determine_routing(state: dict | None, callback: str, text: str) -> str:
     if phase == "awaiting_report":
         return "report"
 
+    # Remind manager (user-initiated resend)
+    if callback == "remind_report":
+        return "remind_report"
+
     # Awaiting manager review — show status
     if phase == "awaiting_review":
         return "show_review_status"
@@ -160,7 +164,15 @@ async def _dispatch(message: Message, state: dict | None, routing: str,
         case "manager_review":
             await manager.handle(**ctx)
         case "show_review_status":
-            await message.answer("⏳ Твой отчёт на проверке у куратора. Ожидай — обычно до 24 часов.")
+            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+            await message.answer(
+                "⏳ Твой отчёт на проверке у куратора. Ожидай — обычно до 24 часов.",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                    InlineKeyboardButton(text="🔔 Напомнить куратору", callback_data="remind_report"),
+                ]]),
+            )
+        case "remind_report":
+            await report.remind_review(**ctx)
         case "psychologist":
             await psychologist.handle(**ctx)
         case "weekly_check":
