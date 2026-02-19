@@ -38,6 +38,9 @@ async def handle(message: Message, callback_data: str, state: dict,
     total = len(questions)
 
     if current_index >= total:
+        # Set module away from "screening" immediately to prevent re-triggering
+        # if user sends any message while background analysis is running
+        await db.update_user_state(telegram_id, current_module="complete")
         await _run_analysis(message, telegram_id, first_name)
         return
 

@@ -34,14 +34,19 @@ async def handle(message: Message, callback_data: str, state: dict,
         await db.update_user_state(telegram_id, current_module=return_module)
         if return_module and return_module.startswith("m"):
             lesson_num = return_module.replace("m", "").replace("_lesson", "")
-            await message.answer(
-                f"✅ Возвращаемся к занятиям.",
-                reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
-                    InlineKeyboardButton(text=f"▶️ Урок {lesson_num}", callback_data="lesson_continue"),
-                ]]),
-            )
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text=f"▶️ Урок {lesson_num}", callback_data="lesson_continue"),
+            ]])
+        elif return_module == "complete":
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="▶️ Начать курс", callback_data="start_course"),
+            ]])
         else:
-            await message.answer("✅ Возвращаемся к занятиям.")
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="▶️ Начать программу", callback_data="onboarding_accept")],
+                [InlineKeyboardButton(text="💬 Поговорить с психологом", callback_data="chat_psychologist")],
+            ])
+        await message.answer("✅ Возвращаемся.", reply_markup=keyboard)
         return
 
     # Regular message in ai_chat mode

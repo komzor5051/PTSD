@@ -34,6 +34,10 @@ def _determine_routing(state: dict | None, callback: str, text: str) -> str:
     module = state.get("current_module", "idle")
     phase = state.get("current_phase")
 
+    # /start always shows return menu — must be before any module-based routing
+    if text == "/start":
+        return "return_user"
+
     # Morning mood response
     if callback.startswith("morning_mood_"):
         return "morning_check_response"
@@ -74,10 +78,6 @@ def _determine_routing(state: dict | None, callback: str, text: str) -> str:
             callback.startswith("lesson_") or callback.startswith("rating_") or
             (module and module.startswith("m"))):
         return "lesson"
-
-    # Return user hitting /start
-    if text == "/start" and state:
-        return "return_user"
 
     return "idle_menu"
 
