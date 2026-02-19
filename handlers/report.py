@@ -62,10 +62,15 @@ async def _notify_managers(message: Message, user_id: int, lesson_id: str,
     rating_text = f"{rating}/10" if rating is not None else "не указана"
     truncated = report_text[:400] + "..." if len(report_text) > 400 else report_text
 
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="✅ Принять", callback_data=f"approve_report_{user_id}_{lesson_id}"),
-        InlineKeyboardButton(text="❌ Отклонить", callback_data=f"reject_report_{user_id}_{lesson_id}"),
-    ]])
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="✅ Принять", callback_data=f"approve_report_{user_id}_{lesson_id}"),
+            InlineKeyboardButton(text="❌ Отклонить", callback_data=f"reject_report_{user_id}_{lesson_id}"),
+        ],
+        [
+            InlineKeyboardButton(text="✉️ Написать пользователю", url=f"tg://user?id={user_id}"),
+        ],
+    ])
 
     header = (
         f"{prefix}\n\n"
