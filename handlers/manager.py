@@ -8,11 +8,8 @@ from handlers.lesson import _next_module
 
 logger = logging.getLogger(__name__)
 
-REJECT_REASONS = [
-    ("Отчёт слишком короткий", "short"),
-    ("Упражнение не выполнено", "notdone"),
-    ("Нужно больше деталей", "details"),
-]
+# manager_id → (user_id, lesson_id) — ожидаем ввод причины отклонения
+_pending_rejections: dict[int, tuple[int, str]] = {}
 
 
 async def handle(message: Message, callback_data: str, telegram_id: int, **kwargs):
@@ -22,24 +19,21 @@ async def handle(message: Message, callback_data: str, telegram_id: int, **kwarg
         return  # silently ignore non-managers
 
     if callback_data.startswith("approve_report_"):
-        # approve_report_{user_id}_{lesson_id}
         _, _, user_id_str, lesson_id = callback_data.split("_", 3)
         await _approve(message, int(user_id_str), lesson_id, telegram_id)
 
     elif callback_data.startswith("reject_report_"):
-        # reject_report_{user_id}_{lesson_id}
         _, _, user_id_str, lesson_id = callback_data.split("_", 3)
-        await _show_reject_reasons(message, int(user_id_str), lesson_id)
+        await _ask_reject_reason(message, int(user_id_str), lesson_id, telegram_id)
 
-    elif callback_data.startswith("reject_reason_"):
-        # reject_reason_{reason_code}_{user_id}_{lesson_id}
-        parts = callback_data.split("_", 4)
-        # format: reject_reason_{code}_{user_id}_{lesson_id}
-        reason_code = parts[2]
-        user_id = int(parts[3])
-        lesson_id = parts[4]
-        reason_text = next((r[0] for r in REJECT_REASONS if r[1] == reason_code), "Не указана")
-        await _reject(message, user_id, lesson_id, telegram_id, reason_text)
+
+async def handle_rejection_reason(message: Message, telegram_id: int, text: str, **kwargs):
+    """Called when manager types rejection reason after clicking Отклонить."""
+    pending = _pending_rejections.pop(telegram_id, None)
+    if not pending:
+        return
+    user_id, lesson_id = pending
+    await _reject(message, user_id, lesson_id, telegram_id, text.strip())
 
 
 async def _approve(message: Message, user_id: int, lesson_id: str, manager_id: int):
@@ -82,15 +76,12 @@ async def _approve(message: Message, user_id: int, lesson_id: str, manager_id: i
     await message.answer(f"✅ Отчёт пользователя {user_id} принят, начислено {reward}₽")
 
 
-async def _show_reject_reasons(message: Message, user_id: int, lesson_id: str):
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(
-            text=reason,
-            callback_data=f"reject_reason_{code}_{user_id}_{lesson_id}",
-        )]
-        for reason, code in REJECT_REASONS
-    ])
-    await message.answer("Выбери причину отклонения:", reply_markup=keyboard)
+async def _ask_reject_reason(message: Message, user_id: int, lesson_id: str, manager_id: int):
+    """Store pending rejection and ask manager to type reason."""
+    _pending_rejections[manager_id] = (user_id, lesson_id)
+    await message.answer(
+        f"✍️ Напиши причину отклонения отчёта пользователя {user_id} следующим сообщением."
+    )
 
 
 async def _reject(message: Message, user_id: int, lesson_id: str, manager_id: int, reason: str):

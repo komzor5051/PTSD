@@ -21,12 +21,16 @@ async def _get_voice_text(message: Message) -> str | None:
     return await transcribe(file_bytes.read(), "voice.ogg")
 
 
-def _determine_routing(state: dict | None, callback: str, text: str) -> str:
+def _determine_routing(state: dict | None, callback: str, text: str, telegram_id: int = 0) -> str:
     """Pure routing logic. Maps to Determine Routing node in MASTER_ROUTER_v2."""
     # Manager callbacks bypass state check — managers may not have a bot state
-    if (callback.startswith("approve_report_") or callback.startswith("reject_report_") or
-            callback.startswith("reject_reason_")):
+    if (callback.startswith("approve_report_") or callback.startswith("reject_report_")):
         return "manager_review"
+
+    # Manager typing rejection reason (text message after clicking Отклонить)
+    from handlers.manager import _pending_rejections
+    if telegram_id in _pending_rejections and text:
+        return "manager_reject_reason"
 
     if state is None:
         return "new_user"
@@ -103,7 +107,7 @@ async def handle_message(message: Message):
             return
 
     state = await db.get_user_state(telegram_id)
-    routing = _determine_routing(state, "", text)
+    routing = _determine_routing(state, "", text, telegram_id)
     await _dispatch(message, state, routing, text, transcript, callback_data="", telegram_id=telegram_id)
 
 
@@ -121,7 +125,7 @@ async def handle_callback(callback: CallbackQuery):
         pass  # continueOnFail: true
 
     state = await db.get_user_state(telegram_id)
-    routing = _determine_routing(state, callback_data, "")
+    routing = _determine_routing(state, callback_data, "", telegram_id)
     await _dispatch(callback.message, state, routing, "", None, callback_data=callback_data, telegram_id=telegram_id)
 
 
@@ -163,6 +167,8 @@ async def _dispatch(message: Message, state: dict | None, routing: str,
             await report.handle(**ctx)
         case "manager_review":
             await manager.handle(**ctx)
+        case "manager_reject_reason":
+            await manager.handle_rejection_reason(**ctx)
         case "show_review_status":
             from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
             await message.answer(

@@ -25,12 +25,15 @@ async def handle(message: Message, state: dict, telegram_id: int,
         )
         return
 
+    voice_file_id = message.voice.file_id if message.voice else None
+
     await db.save_lesson_report(
         user_id=telegram_id,
         lesson_id=lesson_id,
         report_text=report_text,
         voice_transcript=transcript,
         rating=rating,
+        voice_file_id=voice_file_id,
     )
 
     await db.update_user_state(telegram_id,
@@ -38,7 +41,8 @@ async def handle(message: Message, state: dict, telegram_id: int,
         report_status="awaiting_review",
     )
 
-    await _notify_managers(message, telegram_id, lesson_id, lesson_num, report_text, rating)
+    await _notify_managers(message, telegram_id, lesson_id, lesson_num, report_text, rating,
+                           voice_file_id=voice_file_id)
 
     await message.answer(
         "✅ *Отчёт отправлен!*\n\n"
@@ -48,40 +52,49 @@ async def handle(message: Message, state: dict, telegram_id: int,
 
 
 async def _notify_managers(message: Message, user_id: int, lesson_id: str,
-                            lesson_num: str, report_text: str, rating: int | None):
+                            lesson_num: str, report_text: str, rating: int | None,
+                            voice_file_id: str | None = None, prefix: str = "📋 *Новый отчёт*"):
     """Send report to manager group with approve/reject buttons."""
     user = message.chat
     first_name = user.first_name or "боец"
     username = f"@{user.username}" if getattr(user, "username", None) else str(user_id)
 
     rating_text = f"{rating}/10" if rating is not None else "не указана"
-    truncated = report_text[:500] + "..." if len(report_text) > 500 else report_text
+    truncated = report_text[:400] + "..." if len(report_text) > 400 else report_text
 
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(
-                text="✅ Принять",
-                callback_data=f"approve_report_{user_id}_{lesson_id}",
-            ),
-            InlineKeyboardButton(
-                text="❌ Отклонить",
-                callback_data=f"reject_report_{user_id}_{lesson_id}",
-            ),
-        ]
-    ])
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="✅ Принять", callback_data=f"approve_report_{user_id}_{lesson_id}"),
+        InlineKeyboardButton(text="❌ Отклонить", callback_data=f"reject_report_{user_id}_{lesson_id}"),
+    ]])
+
+    header = (
+        f"{prefix}\n\n"
+        f"*Участник:* {first_name} ({username})\n"
+        f"*Урок:* {lesson_num}\n"
+        f"*Оценка состояния:* {rating_text}\n\n"
+        f"*Отчёт:*\n{truncated}"
+    )
 
     try:
-        await message.bot.send_message(
-            chat_id=settings.MANAGER_GROUP_CHAT_ID,
-            text=(
-                f"📋 *Новый отчёт*\n\n"
+        if voice_file_id:
+            # Send voice message with report info as caption
+            caption = (
+                f"{prefix}\n\n"
                 f"*Участник:* {first_name} ({username})\n"
-                f"*Урок:* {lesson_num}\n"
-                f"*Оценка состояния:* {rating_text}\n\n"
-                f"*Отчёт:*\n{truncated}"
-            ),
-            reply_markup=keyboard,
-        )
+                f"*Урок:* {lesson_num} | *Оценка:* {rating_text}"
+            )
+            await message.bot.send_voice(
+                chat_id=settings.MANAGER_GROUP_CHAT_ID,
+                voice=voice_file_id,
+                caption=caption,
+                reply_markup=keyboard,
+            )
+        else:
+            await message.bot.send_message(
+                chat_id=settings.MANAGER_GROUP_CHAT_ID,
+                text=header,
+                reply_markup=keyboard,
+            )
     except Exception as e:
         logger.error("Failed to notify managers: %s", e)
 
@@ -105,22 +118,18 @@ async def remind_review(message: Message, state: dict, telegram_id: int, **kwarg
     rating_text = f"{rating}/10" if rating is not None else "не указана"
     truncated = report_text[:500] + "..." if len(report_text) > 500 else report_text
 
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="✅ Принять", callback_data=f"approve_report_{telegram_id}_{lesson_id}"),
-        InlineKeyboardButton(text="❌ Отклонить", callback_data=f"reject_report_{telegram_id}_{lesson_id}"),
-    ]])
+    voice_file_id = report.get("voice_file_id")
 
     try:
-        await message.bot.send_message(
-            chat_id=settings.MANAGER_GROUP_CHAT_ID,
-            text=(
-                f"🔔 *НАПОМИНАНИЕ*\n\n"
-                f"*Участник:* {first_name} ({username})\n"
-                f"*Урок:* {lesson_num}\n"
-                f"*Оценка состояния:* {rating_text}\n\n"
-                f"*Отчёт:*\n{truncated}"
-            ),
-            reply_markup=keyboard,
+        await _notify_managers(
+            message=message,
+            user_id=telegram_id,
+            lesson_id=lesson_id,
+            lesson_num=lesson_num,
+            report_text=report_text,
+            rating=rating,
+            voice_file_id=voice_file_id,
+            prefix="🔔 *НАПОМИНАНИЕ*",
         )
         await message.answer("✅ Напоминание отправлено куратору.")
     except Exception as e:
