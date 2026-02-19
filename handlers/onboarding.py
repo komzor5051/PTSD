@@ -1,0 +1,124 @@
+"""Onboarding flow — mirrors ONBOARDING_FLOW.json."""
+from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
+
+from ptsd_bot.db import client as db
+
+
+def _welcome_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Да, начать", callback_data="onboarding_accept")],
+        [InlineKeyboardButton(text="ℹ️ Подробнее о программе", callback_data="onboarding_info")],
+    ])
+
+
+def _consent_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Согласен, продолжить", callback_data="consent_yes")],
+        [InlineKeyboardButton(text="❌ Не сейчас", callback_data="consent_no")],
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="restart_onboarding")],
+    ])
+
+
+def _reminder_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🌅 Утром (9:00)", callback_data="reminder_morning")],
+        [InlineKeyboardButton(text="🌆 Вечером (20:00)", callback_data="reminder_evening")],
+    ])
+
+
+async def handle_new_user(message: Message, telegram_id: int, **kwargs):
+    """Create new user record and send welcome message."""
+    user = message.chat
+    await db.create_user(telegram_id, getattr(user, "username", None), user.first_name or "боец")
+
+    await message.answer(
+        f"🎖️ *Приветствую, {user.first_name or 'боец'}!*\n\n"
+        "Я — система психологической реабилитации для участников боевых действий.\n\n"
+        "Программа включает:\n"
+        "• 10 занятий по работе с ПТСР\n"
+        "• Поддержку ИИ-психолога\n"
+        "• Вознаграждение за прохождение\n\n"
+        "Готов начать?",
+        reply_markup=_welcome_keyboard(),
+    )
+
+
+async def handle_return_user(message: Message, first_name: str, state: dict, **kwargs):
+    """Welcome back existing user."""
+    module = (state or {}).get("current_module", "idle")
+    text = f"👋 *{first_name}*, снова здравствуй.\n\nЧем могу помочь?"
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="▶️ Продолжить программу", callback_data="lesson_continue")]
+        if module and module.startswith("m") else
+        [InlineKeyboardButton(text="💬 Поговорить с психологом", callback_data="chat_psychologist")],
+    ])
+    await message.answer(text, reply_markup=keyboard)
+
+
+async def handle(message: Message, callback_data: str, telegram_id: int,
+                 first_name: str, **kwargs):
+    """Handle all onboarding callbacks."""
+    match callback_data:
+        case "onboarding_accept" | "restart_onboarding":
+            await message.answer(
+                "📋 *Согласие на участие в программе*\n\n"
+                "Программа реабилитации включает психологические упражнения и анкетирование.\n"
+                "Данные обрабатываются конфиденциально и используются только для оценки твоего состояния.\n\n"
+                "Ты согласен участвовать?",
+                reply_markup=_consent_keyboard(),
+            )
+
+        case "onboarding_info":
+            await message.answer(
+                "ℹ️ *О программе реабилитации*\n\n"
+                "Программа разработана военными психологами и включает:\n\n"
+                "🔹 Скрининг для оценки уровня стресса\n"
+                "🔹 10 структурированных занятий\n"
+                "🔹 Практические упражнения\n"
+                "🔹 Поддержку ИИ-психолога 24/7\n"
+                "🔹 Денежное вознаграждение за прохождение (до 2700₽)\n\n"
+                "Программа занимает 10-20 минут в день.",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="✅ Начать программу", callback_data="onboarding_accept")],
+                ]),
+            )
+
+        case "consent_yes":
+            await db.update_user_state(telegram_id, current_module="idle", onboarding_step="completed")
+            await message.answer(
+                "✅ *Отлично!*\n\n"
+                "Выбери удобное время для ежедневных напоминаний о занятиях:",
+                reply_markup=_reminder_keyboard(),
+            )
+
+        case "consent_no" | "pause_onboarding":
+            await db.update_user_state(telegram_id, current_module="idle", onboarding_step="declined")
+            await message.answer(
+                "Понял. Если захочешь вернуться — просто напиши /start.\n\n"
+                "Программа будет ждать тебя. 🎖️"
+            )
+
+        case "reminder_morning":
+            await db.upsert_reminder_settings(telegram_id, reminder_time_preference="morning", reminder_hour=9)
+            await db.update_user_state(telegram_id, current_module="screening", screening_question_index=0)
+            await message.answer(
+                "✅ Напоминания настроены на *9:00*.\n\n"
+                "Теперь пройдём короткую анкету — это поможет оценить твоё текущее состояние "
+                "и подобрать программу именно для тебя.\n\n"
+                "32 вопроса, ответы: Да / Нет.",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="▶️ Начать анкету", callback_data="start_questionnaire")],
+                ]),
+            )
+
+        case "reminder_evening":
+            await db.upsert_reminder_settings(telegram_id, reminder_time_preference="evening", reminder_hour=20)
+            await db.update_user_state(telegram_id, current_module="screening", screening_question_index=0)
+            await message.answer(
+                "✅ Напоминания настроены на *20:00*.\n\n"
+                "Теперь пройдём короткую анкету — это поможет оценить твоё текущее состояние.\n\n"
+                "32 вопроса, ответы: Да / Нет.",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="▶️ Начать анкету", callback_data="start_questionnaire")],
+                ]),
+            )
