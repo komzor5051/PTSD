@@ -6,7 +6,7 @@ from pathlib import Path
 
 from openai import AsyncOpenAI
 
-from ptsd_bot.config import settings
+from config import settings
 
 _client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
 

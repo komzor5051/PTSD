@@ -13,7 +13,7 @@ from aiogram import Bot
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-from ptsd_bot.db import client as db
+from db import client as db
 
 logger = logging.getLogger(__name__)
 

@@ -4,8 +4,8 @@ import logging
 from aiogram import Router
 from aiogram.types import Message, CallbackQuery
 
-from ptsd_bot.db import client as db
-from ptsd_bot.services.crisis import detect_crisis, handle_crisis
+from db import client as db
+from services.crisis import detect_crisis, handle_crisis
 
 logger = logging.getLogger(__name__)
 main_router = Router()
@@ -15,7 +15,7 @@ async def _get_voice_text(message: Message) -> str | None:
     """Download and transcribe voice message. Returns None if not a voice."""
     if not message.voice:
         return None
-    from ptsd_bot.services.openai_service import transcribe
+    from services.openai_service import transcribe
     file = await message.bot.get_file(message.voice.file_id)
     file_bytes = await message.bot.download_file(file.file_path)
     return await transcribe(file_bytes.read(), "voice.ogg")
@@ -122,7 +122,7 @@ async def handle_callback(callback: CallbackQuery):
 async def _dispatch(message: Message, state: dict | None, routing: str,
                     text: str, transcript: str | None, callback_data: str):
     """Dispatch to the appropriate handler module."""
-    from ptsd_bot.handlers import (
+    from handlers import (
         onboarding, questionnaire, lesson, report,
         manager, psychologist, weekly_check, reminder_settings,
     )

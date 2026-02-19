@@ -4,9 +4,9 @@ import logging
 
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 
-from ptsd_bot.db import client as db
-from ptsd_bot.services import openai_service
-from ptsd_bot.services.crisis import handle_crisis
+from db import client as db
+from services import openai_service
+from services.crisis import handle_crisis
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +52,7 @@ async def handle_morning_mood(message: Message, callback_data: str, telegram_id:
     """Handle morning mood selection (morning_mood_1 .. morning_mood_5)."""
     mood_score = int(callback_data.replace("morning_mood_", ""))
 
-    from ptsd_bot.db.client import get_client
+    from db.client import get_client
     client = get_client()
 
     await asyncio.to_thread(lambda: client.table("ptsd_morning_checks").upsert({

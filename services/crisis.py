@@ -24,7 +24,7 @@ def detect_crisis(text: str) -> list[str]:
 
 async def handle_crisis(bot: Bot, user_id: int, chat_id: int) -> None:
     """Send crisis message and set crisis_hold state."""
-    from ptsd_bot.db import client as db
+    from db import client as db
 
     await bot.send_message(chat_id, CRISIS_MESSAGE)
     await db.update_user_state(user_id,

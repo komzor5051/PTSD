@@ -3,8 +3,8 @@ import logging
 
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 
-from ptsd_bot.db import client as db
-from ptsd_bot.handlers.lesson import _next_module
+from db import client as db
+from handlers.lesson import _next_module
 
 logger = logging.getLogger(__name__)
 

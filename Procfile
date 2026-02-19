@@ -1,1 +1,1 @@
-worker: python -m ptsd_bot.main
+worker: python main.py

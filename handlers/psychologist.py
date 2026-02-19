@@ -3,9 +3,9 @@ import logging
 
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 
-from ptsd_bot.db import client as db
-from ptsd_bot.services import openai_service
-from ptsd_bot.services.crisis import detect_crisis, handle_crisis, CRISIS_MESSAGE
+from db import client as db
+from services import openai_service
+from services.crisis import detect_crisis, handle_crisis, CRISIS_MESSAGE
 
 logger = logging.getLogger(__name__)
 

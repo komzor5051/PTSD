@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 
-from ptsd_bot.db import client as db
+from db import client as db
 
 
 def _settings_keyboard() -> InlineKeyboardMarkup:

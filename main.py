@@ -5,9 +5,9 @@ from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 
-from ptsd_bot.config import settings
-from ptsd_bot.router import main_router
-from ptsd_bot.schedulers.tasks import setup_scheduler
+from config import settings
+from router import main_router
+from schedulers.tasks import setup_scheduler
 
 logging.basicConfig(
     level=logging.INFO,

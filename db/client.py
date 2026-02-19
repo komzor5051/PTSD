@@ -3,7 +3,7 @@ import asyncio
 
 from supabase import create_client, Client
 
-from ptsd_bot.config import settings
+from config import settings
 
 _client: Client | None = None
 
