@@ -84,7 +84,7 @@ async def handle(message: Message, callback_data: str, telegram_id: int,
             )
 
         case "consent_yes":
-            await db.update_user_state(telegram_id, current_module="idle", onboarding_step="completed")
+            await db.update_user_state(telegram_id, current_module="idle")
             await message.answer(
                 "✅ *Отлично!*\n\n"
                 "Выбери удобное время для ежедневных напоминаний о занятиях:",
@@ -92,7 +92,7 @@ async def handle(message: Message, callback_data: str, telegram_id: int,
             )
 
         case "consent_no" | "pause_onboarding":
-            await db.update_user_state(telegram_id, current_module="idle", onboarding_step="declined")
+            await db.update_user_state(telegram_id, current_module="idle")
             await message.answer(
                 "Понял. Если захочешь вернуться — просто напиши /start.\n\n"
                 "Программа будет ждать тебя. 🎖️"
