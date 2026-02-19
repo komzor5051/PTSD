@@ -55,10 +55,10 @@ async def handle_morning_mood(message: Message, callback_data: str, telegram_id:
     from db.client import get_client
     client = get_client()
 
-    await asyncio.to_thread(lambda: client.table("ptsd_morning_checks").upsert({
-        "user_id": telegram_id,
-        "mood_score": mood_score,
-    }).execute())
+    await asyncio.to_thread(lambda: client.table("ptsd_morning_checks").upsert(
+        {"user_id": telegram_id, "mood_score": mood_score},
+        on_conflict="user_id,check_date",
+    ).execute())
 
     crisis = await db.rpc_check_morning_crisis(telegram_id)
 

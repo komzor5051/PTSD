@@ -23,15 +23,16 @@ async def _get_voice_text(message: Message) -> str | None:
 
 def _determine_routing(state: dict | None, callback: str, text: str) -> str:
     """Pure routing logic. Maps to Determine Routing node in MASTER_ROUTER_v2."""
+    # Manager callbacks bypass state check — managers may not have a bot state
+    if (callback.startswith("approve_report_") or callback.startswith("reject_report_") or
+            callback.startswith("reject_reason_")):
+        return "manager_review"
+
     if state is None:
         return "new_user"
 
     module = state.get("current_module", "idle")
     phase = state.get("current_phase")
-
-    # Manager callbacks (checked first — manager IDs bypass normal flow)
-    if callback.startswith("approve_report_") or callback.startswith("reject_report_"):
-        return "manager_review"
 
     # Morning mood response
     if callback.startswith("morning_mood_"):
@@ -98,7 +99,7 @@ async def handle_message(message: Message):
 
     state = await db.get_user_state(telegram_id)
     routing = _determine_routing(state, "", text)
-    await _dispatch(message, state, routing, text, transcript, callback_data="")
+    await _dispatch(message, state, routing, text, transcript, callback_data="", telegram_id=telegram_id)
 
 
 @main_router.callback_query()
@@ -116,16 +117,20 @@ async def handle_callback(callback: CallbackQuery):
 
     state = await db.get_user_state(telegram_id)
     routing = _determine_routing(state, callback_data, "")
-    await _dispatch(callback.message, state, routing, "", None, callback_data=callback_data)
+    await _dispatch(callback.message, state, routing, "", None, callback_data=callback_data, telegram_id=telegram_id)
 
 
 async def _dispatch(message: Message, state: dict | None, routing: str,
-                    text: str, transcript: str | None, callback_data: str):
+                    text: str, transcript: str | None, callback_data: str,
+                    telegram_id: int | None = None):
     """Dispatch to the appropriate handler module."""
     from handlers import (
         onboarding, questionnaire, lesson, report,
         manager, psychologist, weekly_check, reminder_settings,
     )
+
+    # telegram_id must come from from_user.id (not message.chat.id which is wrong in group chats)
+    effective_id = telegram_id if telegram_id is not None else message.chat.id
 
     ctx = {
         "message": message,
@@ -133,8 +138,8 @@ async def _dispatch(message: Message, state: dict | None, routing: str,
         "text": text,
         "transcript": transcript,
         "callback_data": callback_data,
-        "telegram_id": message.chat.id,
-        "user_id": message.chat.id,
+        "telegram_id": effective_id,
+        "user_id": effective_id,
         "first_name": (state or {}).get("ptsd_users", {}).get("first_name", "боец") if state else "боец",
     }
 

@@ -32,7 +32,16 @@ async def handle(message: Message, callback_data: str, state: dict,
     if callback_data == "return_to_lesson":
         return_module = state.get("ai_chat_return_module") or "idle"
         await db.update_user_state(telegram_id, current_module=return_module)
-        await message.answer("✅ Возвращаемся к занятиям.")
+        if return_module and return_module.startswith("m"):
+            lesson_num = return_module.replace("m", "").replace("_lesson", "")
+            await message.answer(
+                f"✅ Возвращаемся к занятиям.",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                    InlineKeyboardButton(text=f"▶️ Урок {lesson_num}", callback_data="lesson_continue"),
+                ]]),
+            )
+        else:
+            await message.answer("✅ Возвращаемся к занятиям.")
         return
 
     # Regular message in ai_chat mode

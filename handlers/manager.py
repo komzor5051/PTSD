@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 REJECT_REASONS = [
     ("Отчёт слишком короткий", "short"),
-    ("Упражнение не выполнено", "not_done"),
+    ("Упражнение не выполнено", "notdone"),
     ("Нужно больше деталей", "details"),
 ]
 
