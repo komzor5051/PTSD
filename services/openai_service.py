@@ -1,14 +1,17 @@
-"""OpenAI API calls: Whisper transcription and GPT-4 analysis/chat."""
+"""Gemini AI: voice transcription and text analysis/chat."""
+import asyncio
 import json
 import tempfile
 import os
 from pathlib import Path
 
-from openai import AsyncOpenAI
+import google.generativeai as genai
 
 from config import settings
 
-_client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+genai.configure(api_key=settings.GEMINI_API_KEY)
+
+MODEL = "gemini-2.5-flash"
 
 QUESTIONNAIRE_SYSTEM_PROMPT = """Ты — военный психолог, специалист по ПТСР у участников боевых действий.
 Проанализируй ответы на 32 вопроса скрининга ПТСР.
@@ -50,67 +53,94 @@ WEEKLY_CHECK_SYSTEM_PROMPT = """Проанализируй ответ участ
 
 
 async def transcribe(file_bytes: bytes, filename: str = "voice.ogg") -> str:
-    """Transcribe voice message via Whisper API."""
+    """Transcribe voice message via Gemini audio understanding."""
     with tempfile.NamedTemporaryFile(suffix=Path(filename).suffix, delete=False) as tmp:
         tmp.write(file_bytes)
         tmp_path = tmp.name
 
+    def _do():
+        uploaded = genai.upload_file(tmp_path, mime_type="audio/ogg")
+        model = genai.GenerativeModel(MODEL)
+        response = model.generate_content([
+            "Транскрибируй это аудио на русском языке. Верни только текст, без пояснений.",
+            uploaded,
+        ])
+        try:
+            genai.delete_file(uploaded.name)
+        except Exception:
+            pass
+        return response.text.strip()
+
     try:
-        with open(tmp_path, "rb") as f:
-            result = await _client.audio.transcriptions.create(
-                model="whisper-1",
-                file=(filename, f, "audio/ogg"),
-                language="ru",
-            )
-        return result.text
+        return await asyncio.to_thread(_do)
     finally:
         os.unlink(tmp_path)
 
 
 async def analyze_questionnaire(answers: list[dict], user_name: str) -> dict:
-    """Run GPT-4 analysis on 32 questionnaire answers. Returns parsed dict."""
+    """Run Gemini analysis on 32 questionnaire answers. Returns parsed dict."""
     answers_text = "\n".join(
         f"{a['question_number']}. {a.get('question_text', '')} — {a['answer_text']}"
         for a in answers
     )
     prompt = f"Участник: {user_name}\n\nОтветы на анкету:\n{answers_text}"
 
-    response = await _client.chat.completions.create(
-        model="gpt-4o",
-        messages=[
-            {"role": "system", "content": QUESTIONNAIRE_SYSTEM_PROMPT},
-            {"role": "user", "content": prompt},
-        ],
-        response_format={"type": "json_object"},
-        temperature=0.3,
-    )
-    return json.loads(response.choices[0].message.content)
+    def _do():
+        model = genai.GenerativeModel(
+            MODEL,
+            system_instruction=QUESTIONNAIRE_SYSTEM_PROMPT,
+        )
+        response = model.generate_content(
+            prompt,
+            generation_config=genai.types.GenerationConfig(
+                response_mime_type="application/json",
+                temperature=0.3,
+            ),
+        )
+        return json.loads(response.text)
+
+    return await asyncio.to_thread(_do)
 
 
 async def chat_with_psychologist(history: list[dict], user_message: str) -> str:
-    """Continue conversation with AI psychologist. history = list of {role, content}."""
-    messages = [{"role": "system", "content": PSYCHOLOGIST_SYSTEM_PROMPT}]
-    messages.extend(history[-10:])  # last 10 messages for context
-    messages.append({"role": "user", "content": user_message})
+    """Continue conversation with AI psychologist."""
+    def _do():
+        model = genai.GenerativeModel(
+            MODEL,
+            system_instruction=PSYCHOLOGIST_SYSTEM_PROMPT,
+        )
+        gemini_history = []
+        for msg in history[-10:]:
+            role = "user" if msg["role"] == "user" else "model"
+            gemini_history.append({"role": role, "parts": [msg["content"]]})
 
-    response = await _client.chat.completions.create(
-        model="gpt-4o",
-        messages=messages,
-        temperature=0.7,
-        max_tokens=400,
-    )
-    return response.choices[0].message.content
+        chat = model.start_chat(history=gemini_history)
+        response = chat.send_message(
+            user_message,
+            generation_config=genai.types.GenerationConfig(
+                temperature=0.7,
+                max_output_tokens=400,
+            ),
+        )
+        return response.text
+
+    return await asyncio.to_thread(_do)
 
 
 async def analyze_weekly_check(response_text: str) -> dict:
     """Analyze weekly check response. Returns {ai_analysis, sentiment_score, crisis_detected}."""
-    result = await _client.chat.completions.create(
-        model="gpt-4o",
-        messages=[
-            {"role": "system", "content": WEEKLY_CHECK_SYSTEM_PROMPT},
-            {"role": "user", "content": response_text},
-        ],
-        response_format={"type": "json_object"},
-        temperature=0.3,
-    )
-    return json.loads(result.choices[0].message.content)
+    def _do():
+        model = genai.GenerativeModel(
+            MODEL,
+            system_instruction=WEEKLY_CHECK_SYSTEM_PROMPT,
+        )
+        response = model.generate_content(
+            response_text,
+            generation_config=genai.types.GenerationConfig(
+                response_mime_type="application/json",
+                temperature=0.3,
+            ),
+        )
+        return json.loads(response.text)
+
+    return await asyncio.to_thread(_do)

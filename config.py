@@ -5,8 +5,8 @@ class Settings(BaseSettings):
     BOT_TOKEN: str
     SUPABASE_URL: str
     SUPABASE_KEY: str
-    OPENAI_API_KEY: str
-    MANAGER_GROUP_CHAT_ID: int
+    GEMINI_API_KEY: str
+    MANAGER_GROUP_CHAT_ID: int = 0
 
     class Config:
         env_file = ".env"
