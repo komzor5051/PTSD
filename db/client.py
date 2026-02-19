@@ -126,7 +126,7 @@ async def get_lesson_report(user_id: int, lesson_id: str) -> dict | None:
         .eq("user_id", user_id)
         .eq("lesson_id", lesson_id)
         .eq("status", "pending")
-        .order("created_at", desc=True)
+        .order("submitted_at", desc=True)
         .limit(1)
         .execute())
     return result.data[0] if result.data else None

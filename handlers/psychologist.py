@@ -32,11 +32,19 @@ async def handle(message: Message, callback_data: str, state: dict,
     if callback_data == "return_to_lesson":
         return_module = state.get("ai_chat_return_module") or "idle"
         await db.update_user_state(telegram_id, current_module=return_module)
+        fresh_state = await db.get_user_state(telegram_id)
+        first_name = (state.get("ptsd_users") or {}).get("first_name", "боец")
         from handlers.onboarding import handle_return_user
-        await handle_return_user(message=message, telegram_id=telegram_id,
-                                  first_name=state.get("ptsd_users", {}).get("first_name", "боец"),
-                                  state={**state, "current_module": return_module},
-                                  **{k: v for k, v in kwargs.items()})
+        await handle_return_user(
+            message=message,
+            telegram_id=telegram_id,
+            first_name=first_name,
+            state=fresh_state,
+            callback_data="",
+            text="",
+            transcript=None,
+            user_id=telegram_id,
+        )
         return
 
     # Regular message in ai_chat mode
