@@ -91,11 +91,10 @@ async def get_lesson_progress(user_id: int) -> list[dict]:
 
 async def upsert_lesson_progress(user_id: int, lesson_id: str, **fields) -> None:
     client = get_client()
-    await _run(lambda: client.table("ptsd_lesson_progress").upsert({
-        "user_id": user_id,
-        "lesson_id": lesson_id,
-        **fields,
-    }).execute())
+    await _run(lambda: client.table("ptsd_lesson_progress").upsert(
+        {"user_id": user_id, "lesson_id": lesson_id, **fields},
+        on_conflict="user_id,lesson_id",
+    ).execute())
 
 
 # ── Reports ──────────────────────────────────────────────────────────────────
@@ -161,11 +160,10 @@ async def get_questions() -> list[dict]:
 
 async def save_questionnaire_answer(user_id: int, question_number: int, answer_text: str) -> None:
     client = get_client()
-    await _run(lambda: client.table("ptsd_questionnaire_answers").upsert({
-        "user_id": user_id,
-        "question_number": question_number,
-        "answer_text": answer_text,
-    }).execute())
+    await _run(lambda: client.table("ptsd_questionnaire_answers").upsert(
+        {"user_id": user_id, "question_number": question_number, "answer_text": answer_text},
+        on_conflict="user_id,question_number",
+    ).execute())
 
 
 async def get_questionnaire_answers(user_id: int) -> list[dict]:
@@ -180,13 +178,16 @@ async def get_questionnaire_answers(user_id: int) -> list[dict]:
 async def save_questionnaire_analysis(user_id: int, ai_summary: str, risk_level: int,
                                        risk_factors: list, suicide_indicators: bool) -> None:
     client = get_client()
-    await _run(lambda: client.table("ptsd_questionnaire_analysis").upsert({
-        "user_id": user_id,
-        "ai_summary": ai_summary,
-        "risk_level": risk_level,
-        "risk_factors": risk_factors,
-        "suicide_indicators": suicide_indicators,
-    }).execute())
+    await _run(lambda: client.table("ptsd_questionnaire_analysis").upsert(
+        {
+            "user_id": user_id,
+            "ai_summary": ai_summary,
+            "risk_level": risk_level,
+            "risk_factors": risk_factors,
+            "suicide_indicators": suicide_indicators,
+        },
+        on_conflict="user_id",
+    ).execute())
 
 
 # ── AI Chat Logs ──────────────────────────────────────────────────────────────
@@ -229,9 +230,10 @@ async def save_weekly_check(user_id: int, response: str, ai_analysis: str,
 
 async def upsert_reminder_settings(user_id: int, **fields) -> None:
     client = get_client()
-    await _run(lambda: client.table("ptsd_reminder_settings").upsert({
-        "user_id": user_id, **fields,
-    }).execute())
+    await _run(lambda: client.table("ptsd_reminder_settings").upsert(
+        {"user_id": user_id, **fields},
+        on_conflict="user_id",
+    ).execute())
 
 
 # ── Scheduled Task Queries (via existing RPC) ─────────────────────────────────
