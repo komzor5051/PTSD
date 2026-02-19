@@ -43,16 +43,59 @@ async def handle_new_user(message: Message, telegram_id: int, **kwargs):
     )
 
 
-async def handle_return_user(message: Message, first_name: str, state: dict, **kwargs):
-    """Welcome back existing user."""
-    module = (state or {}).get("current_module", "idle")
-    text = f"👋 *{first_name}*, снова здравствуй.\n\nЧем могу помочь?"
+async def handle_return_user(message: Message, telegram_id: int, first_name: str, state: dict, **kwargs):
+    """Welcome back existing user — mirrors 'Format Return Message' node in MASTER_ROUTER_v2."""
+    state = state or {}
+    module = state.get("current_module", "idle")
+    phase = state.get("current_phase")
+
+    # If user was in AI chat, reset to idle first (mirrors 'Reset State If AI Chat' node)
+    if module == "ai_chat":
+        await db.update_user_state(telegram_id, current_module="idle")
+        module = "idle"
+
+    # Determine context-aware status text and primary action button
+    if phase == "awaiting_review":
+        status = "Твой отчёт на проверке у куратора."
+        action_btn = InlineKeyboardButton(text="🔄 Проверить статус", callback_data="check_review_status")
+    elif phase == "awaiting_report":
+        status = "Ожидается твой отчёт по уроку."
+        action_btn = InlineKeyboardButton(text="📝 Отправить отчёт", callback_data="lesson_continue")
+    elif module in ("idle", ""):
+        status = "Рад снова тебя видеть."
+        action_btn = InlineKeyboardButton(text="▶️ Начать программу", callback_data="onboarding_accept")
+    elif module == "screening":
+        status = "У тебя есть незавершённая анкета."
+        action_btn = InlineKeyboardButton(text="▶️ Продолжить анкету", callback_data="questionnaire_continue")
+    elif module == "complete":
+        status = "Анкета пройдена. Можно начинать курс."
+        action_btn = InlineKeyboardButton(text="▶️ Начать курс", callback_data="start_course")
+    elif module == "course_complete":
+        status = "Поздравляю! Ты прошёл весь курс."
+        action_btn = InlineKeyboardButton(text="💬 Поговорить с психологом", callback_data="chat_psychologist")
+    elif module == "weekly_check":
+        status = "Ожидается твой ответ на еженедельную проверку."
+        action_btn = InlineKeyboardButton(text="📝 Ответить", callback_data="lesson_continue")
+    elif module.startswith("m"):
+        lesson_num = module.replace("m", "").replace("_lesson", "")
+        phase_names = {"theory": "теории", "practice": "практики", "exercise": "упражнения"}
+        phase_text = phase_names.get(phase or "theory", "занятия")
+        status = f"Урок {lesson_num}. Ты на этапе {phase_text}."
+        action_btn = InlineKeyboardButton(text="▶️ Продолжить урок", callback_data="lesson_continue")
+    else:
+        status = "Рад снова тебя видеть."
+        action_btn = InlineKeyboardButton(text="▶️ Начать программу", callback_data="onboarding_accept")
+
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="▶️ Продолжить программу", callback_data="lesson_continue")]
-        if module and module.startswith("m") else
+        [action_btn],
         [InlineKeyboardButton(text="💬 Поговорить с психологом", callback_data="chat_psychologist")],
+        [InlineKeyboardButton(text="⚙️ Настройки напоминаний", callback_data="show_reminder_settings")],
     ])
-    await message.answer(text, reply_markup=keyboard)
+
+    await message.answer(
+        f"🎖️ *С возвращением, {first_name}!*\n\n{status}\n\nЧто хочешь сделать?",
+        reply_markup=keyboard,
+    )
 
 
 async def handle(message: Message, callback_data: str, telegram_id: int,

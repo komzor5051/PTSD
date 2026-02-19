@@ -65,7 +65,8 @@ def _determine_routing(state: dict | None, callback: str, text: str) -> str:
         return "show_review_status"
 
     # Questionnaire
-    if callback == "start_questionnaire" or module == "screening" or callback in {"answer_yes", "answer_no"}:
+    if (callback in {"start_questionnaire", "questionnaire_continue"} or
+            module == "screening" or callback in {"answer_yes", "answer_no"}):
         return "questionnaire"
 
     # Lesson flow

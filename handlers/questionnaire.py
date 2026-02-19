@@ -25,6 +25,7 @@ async def handle(message: Message, callback_data: str, state: dict,
     if callback_data == "start_questionnaire":
         await db.update_user_state(telegram_id, screening_question_index=0, current_module="screening")
         current_index = 0
+    # questionnaire_continue — resume from current index, no reset
 
     elif callback_data in {"answer_yes", "answer_no"}:
         # Save the answer for the current question (at current_index before increment)
