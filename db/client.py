@@ -31,10 +31,12 @@ async def get_user_state(telegram_id: int) -> dict | None:
             client.table("ptsd_user_state")
             .select("*, ptsd_users!inner(*)")
             .eq("user_id", telegram_id)
-            .maybe_single()
+            .limit(1)
             .execute()
         )
-        return result.data
+        if not result or not result.data:
+            return None
+        return result.data[0]
 
     return await _run(_fetch)
 
@@ -72,9 +74,11 @@ async def update_user_state(user_id: int, **fields) -> None:
 async def get_lesson(lesson_id: str) -> dict | None:
     client = get_client()
     result = await _run(
-        lambda: client.table("ptsd_lessons").select("*").eq("id", lesson_id).maybe_single().execute()
+        lambda: client.table("ptsd_lessons").select("*").eq("id", lesson_id).limit(1).execute()
     )
-    return result.data if result else None
+    if not result or not result.data:
+        return None
+    return result.data[0]
 
 
 async def get_lesson_progress(user_id: int) -> list[dict]:
