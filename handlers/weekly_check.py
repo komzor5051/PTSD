@@ -1,6 +1,7 @@
 """Weekly check + morning mood response handlers."""
 import asyncio
 import logging
+from datetime import date
 
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 
@@ -56,7 +57,7 @@ async def handle_morning_mood(message: Message, callback_data: str, telegram_id:
     client = get_client()
 
     await asyncio.to_thread(lambda: client.table("ptsd_morning_checks").upsert(
-        {"user_id": telegram_id, "mood_score": mood_score},
+        {"user_id": telegram_id, "mood_score": mood_score, "check_date": date.today().isoformat()},
         on_conflict="user_id,check_date",
     ).execute())
 

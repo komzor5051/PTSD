@@ -77,8 +77,8 @@ async def handle_return_user(message: Message, telegram_id: int, first_name: str
         status = "Поздравляю! Ты прошёл весь курс."
         action_btn = InlineKeyboardButton(text="💬 Поговорить с психологом", callback_data="chat_psychologist")
     elif module == "weekly_check":
-        status = "Ожидается твой ответ на еженедельную проверку."
-        action_btn = InlineKeyboardButton(text="📝 Ответить", callback_data="lesson_continue")
+        status = "Ожидается твой ответ на еженедельную проверку. Напиши свободным текстом как прошла неделя."
+        action_btn = InlineKeyboardButton(text="💬 Поговорить с психологом", callback_data="chat_psychologist")
     elif module.startswith("m"):
         lesson_num = module.replace("m", "").replace("_lesson", "")
         phase_names = {"theory": "теории", "practice": "практики", "exercise": "упражнения"}

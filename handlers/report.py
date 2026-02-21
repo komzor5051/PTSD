@@ -5,6 +5,7 @@ from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 
 from config import settings
 from db import client as db
+from services.crisis import detect_crisis, handle_crisis
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +24,12 @@ async def handle(message: Message, state: dict, telegram_id: int,
             "❓ Не получил отчёт. Отправь голосовое сообщение или напиши текстом.\n\n"
             "Расскажи как прошло упражнение."
         )
+        return
+
+    # Crisis check — report text may contain crisis markers
+    crisis_markers = detect_crisis(report_text)
+    if crisis_markers:
+        await handle_crisis(message.bot, telegram_id, message.chat.id)
         return
 
     await db.save_lesson_report(

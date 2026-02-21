@@ -60,7 +60,7 @@ def _determine_routing(state: dict | None, callback: str, text: str, telegram_id
     if callback == "chat_psychologist" or text == "/chat_psychologist" or module == "ai_chat":
         return "psychologist"
 
-    # Weekly check response
+    # Weekly check response — must be before lesson callbacks to avoid lesson_continue hijack
     if module == "weekly_check":
         return "weekly_check"
 
@@ -72,8 +72,8 @@ def _determine_routing(state: dict | None, callback: str, text: str, telegram_id
     if callback == "remind_report":
         return "remind_report"
 
-    # Awaiting manager review — show status
-    if phase == "awaiting_review":
+    # Awaiting manager review — show status or check status
+    if phase == "awaiting_review" or callback == "check_review_status":
         return "show_review_status"
 
     # Questionnaire
