@@ -100,15 +100,13 @@ async def upsert_lesson_progress(user_id: int, lesson_id: str, **fields) -> None
 # ── Reports ──────────────────────────────────────────────────────────────────
 
 async def save_lesson_report(user_id: int, lesson_id: str, report_text: str,
-                              voice_transcript: str | None, rating: int | None,
-                              voice_file_id: str | None = None) -> dict:
+                              voice_transcript: str | None, rating: int | None) -> dict:
     client = get_client()
     result = await _run(lambda: client.table("ptsd_lesson_reports").insert({
         "user_id": user_id,
         "lesson_id": lesson_id,
         "report_text": report_text,
         "voice_transcript": voice_transcript,
-        "voice_file_id": voice_file_id,
         "rating": rating,
         "status": "pending",
     }).execute())
@@ -128,7 +126,7 @@ async def get_lesson_report(user_id: int, lesson_id: str) -> dict | None:
         .eq("user_id", user_id)
         .eq("lesson_id", lesson_id)
         .eq("status", "pending")
-        .order("submitted_at", desc=True)
+        .order("created_at", desc=True)
         .limit(1)
         .execute())
     return result.data[0] if result.data else None

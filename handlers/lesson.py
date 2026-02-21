@@ -41,7 +41,7 @@ def _next_module(current_module: str) -> str | None:
 async def handle(message: Message, callback_data: str, state: dict,
                  telegram_id: int, first_name: str, **kwargs):
     module = state.get("current_module", "")
-    phase = state.get("current_phase", "theory")
+    phase = state.get("current_phase") or "theory"
 
     if callback_data == "start_course":
         module = "m1_lesson"
@@ -117,4 +117,14 @@ async def handle(message: Message, callback_data: str, state: dict,
                 f"💪 *Упражнение — Урок {lesson_num}*\n\n"
                 f"{lesson['exercise_instructions']}",
                 reply_markup=_phase_keyboard("exercise"),
+            )
+
+        case _:
+            # Unexpected phase (e.g. awaiting_review, awaiting_rating) — default to theory
+            logger.warning("Unexpected phase '%s' in lesson handler for user %s, defaulting to theory", phase, telegram_id)
+            await db.update_user_state(telegram_id, current_phase="theory")
+            await message.answer(
+                f"📖 *Урок {lesson_num}: {lesson['title']}*\n\n"
+                f"{lesson['theory_text']}",
+                reply_markup=_phase_keyboard("theory"),
             )
