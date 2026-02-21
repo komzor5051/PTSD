@@ -103,20 +103,31 @@ async def upsert_lesson_progress(user_id: int, lesson_id: str, **fields) -> None
 async def save_lesson_report(user_id: int, lesson_id: str, report_text: str,
                               voice_transcript: str | None, rating: int | None) -> dict:
     client = get_client()
-    result = await _run(lambda: client.table("ptsd_lesson_reports").upsert({
-        "user_id": user_id,
-        "lesson_id": lesson_id,
+    now = datetime.now(timezone.utc).isoformat()
+    payload = {
         "report_text": report_text,
         "voice_transcript": voice_transcript,
         "rating": rating,
         "status": "pending",
-        "submitted_at": datetime.now(timezone.utc).isoformat(),
+        "submitted_at": now,
         "reviewed_at": None,
         "manager_id": None,
         "manager_comment": None,
         "rejection_reason": None,
-    }, on_conflict="user_id,lesson_id").execute())
-    return result.data[0]
+    }
+
+    def _do():
+        # Update existing record if present (re-submission after rejection)
+        upd = client.table("ptsd_lesson_reports").update(payload).eq(
+            "user_id", user_id).eq("lesson_id", lesson_id).execute()
+        if upd.data:
+            return upd.data[0]
+        # No existing record — insert fresh
+        ins = client.table("ptsd_lesson_reports").insert(
+            {"user_id": user_id, "lesson_id": lesson_id, **payload}).execute()
+        return ins.data[0]
+
+    return await _run(_do)
 
 
 async def get_pending_reports() -> list[dict]:
