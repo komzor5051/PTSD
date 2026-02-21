@@ -1,5 +1,6 @@
 """All Supabase interactions. RPC names match existing SQL functions exactly."""
 import asyncio
+from datetime import datetime, timezone
 
 from supabase import create_client, Client
 
@@ -102,15 +103,31 @@ async def upsert_lesson_progress(user_id: int, lesson_id: str, **fields) -> None
 async def save_lesson_report(user_id: int, lesson_id: str, report_text: str,
                               voice_transcript: str | None, rating: int | None) -> dict:
     client = get_client()
-    result = await _run(lambda: client.table("ptsd_lesson_reports").insert({
-        "user_id": user_id,
-        "lesson_id": lesson_id,
+    now = datetime.now(timezone.utc).isoformat()
+    payload = {
         "report_text": report_text,
         "voice_transcript": voice_transcript,
         "rating": rating,
         "status": "pending",
-    }).execute())
-    return result.data[0]
+        "submitted_at": now,
+        "reviewed_at": None,
+        "manager_id": None,
+        "manager_comment": None,
+        "rejection_reason": None,
+    }
+
+    def _do():
+        # Update existing record if present (re-submission after rejection)
+        upd = client.table("ptsd_lesson_reports").update(payload).eq(
+            "user_id", user_id).eq("lesson_id", lesson_id).execute()
+        if upd.data:
+            return upd.data[0]
+        # No existing record — insert fresh
+        ins = client.table("ptsd_lesson_reports").insert(
+            {"user_id": user_id, "lesson_id": lesson_id, **payload}).execute()
+        return ins.data[0]
+
+    return await _run(_do)
 
 
 async def get_pending_reports() -> list[dict]:
@@ -120,13 +137,27 @@ async def get_pending_reports() -> list[dict]:
 
 
 async def get_lesson_report(user_id: int, lesson_id: str) -> dict | None:
+    """Get pending report (for remind flow)."""
     client = get_client()
     result = await _run(lambda: client.table("ptsd_lesson_reports")
         .select("*")
         .eq("user_id", user_id)
         .eq("lesson_id", lesson_id)
         .eq("status", "pending")
-        .order("created_at", desc=True)
+        .order("submitted_at", desc=True)
+        .limit(1)
+        .execute())
+    return result.data[0] if result.data else None
+
+
+async def get_latest_lesson_report(user_id: int, lesson_id: str) -> dict | None:
+    """Get most recent report regardless of status (pending/approved/rejected)."""
+    client = get_client()
+    result = await _run(lambda: client.table("ptsd_lesson_reports")
+        .select("*")
+        .eq("user_id", user_id)
+        .eq("lesson_id", lesson_id)
+        .order("submitted_at", desc=True)
         .limit(1)
         .execute())
     return result.data[0] if result.data else None
