@@ -1,10 +1,8 @@
-"""Gemini AI (text/analysis) + OpenRouter Whisper (transcription)."""
+"""Gemini AI: voice transcription and text analysis/chat."""
 import asyncio
-import io
 import json
 
 import google.generativeai as genai
-from openai import OpenAI
 
 from config import settings
 
@@ -73,20 +71,14 @@ WEEKLY_CHECK_SYSTEM_PROMPT = """Проанализируй ответ участ
 
 
 async def transcribe(file_bytes: bytes, filename: str = "voice.ogg") -> str:
-    """Transcribe voice message via OpenRouter (openai/whisper-1)."""
+    """Transcribe voice message via Gemini inline audio (no File API, no upload)."""
     def _do():
-        client = OpenAI(
-            base_url="https://openrouter.ai/api/v1",
-            api_key=settings.OPENROUTER_API_KEY,
-        )
-        audio_file = io.BytesIO(file_bytes)
-        audio_file.name = filename
-        transcript = client.audio.transcriptions.create(
-            model="openai/whisper-1",
-            file=audio_file,
-            language="ru",
-        )
-        return transcript.text.strip()
+        model = genai.GenerativeModel("gemini-1.5-flash")
+        response = model.generate_content([
+            {"mime_type": "audio/ogg", "data": file_bytes},
+            "Транскрибируй это аудио на русском языке. Верни только текст, без пояснений.",
+        ])
+        return response.text.strip()
 
     return await asyncio.to_thread(_do)
 
