@@ -1,5 +1,6 @@
 """All Supabase interactions. RPC names match existing SQL functions exactly."""
 import asyncio
+from datetime import datetime, timezone
 
 from supabase import create_client, Client
 
@@ -102,14 +103,19 @@ async def upsert_lesson_progress(user_id: int, lesson_id: str, **fields) -> None
 async def save_lesson_report(user_id: int, lesson_id: str, report_text: str,
                               voice_transcript: str | None, rating: int | None) -> dict:
     client = get_client()
-    result = await _run(lambda: client.table("ptsd_lesson_reports").insert({
+    result = await _run(lambda: client.table("ptsd_lesson_reports").upsert({
         "user_id": user_id,
         "lesson_id": lesson_id,
         "report_text": report_text,
         "voice_transcript": voice_transcript,
         "rating": rating,
         "status": "pending",
-    }).execute())
+        "submitted_at": datetime.now(timezone.utc).isoformat(),
+        "reviewed_at": None,
+        "manager_id": None,
+        "manager_comment": None,
+        "rejection_reason": None,
+    }, on_conflict="user_id,lesson_id").execute())
     return result.data[0]
 
 
@@ -127,7 +133,7 @@ async def get_lesson_report(user_id: int, lesson_id: str) -> dict | None:
         .eq("user_id", user_id)
         .eq("lesson_id", lesson_id)
         .eq("status", "pending")
-        .order("created_at", desc=True)
+        .order("submitted_at", desc=True)
         .limit(1)
         .execute())
     return result.data[0] if result.data else None
@@ -140,7 +146,7 @@ async def get_latest_lesson_report(user_id: int, lesson_id: str) -> dict | None:
         .select("*")
         .eq("user_id", user_id)
         .eq("lesson_id", lesson_id)
-        .order("created_at", desc=True)
+        .order("submitted_at", desc=True)
         .limit(1)
         .execute())
     return result.data[0] if result.data else None

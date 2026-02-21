@@ -14,10 +14,6 @@ _pending_rejections: dict[int, tuple[int, str]] = {}
 
 async def handle(message: Message, callback_data: str, telegram_id: int, **kwargs):
     """Handle approve/reject callbacks from manager group."""
-    is_mgr = await db.rpc_is_manager(telegram_id)
-    if not is_mgr:
-        return  # silently ignore non-managers
-
     if callback_data.startswith("approve_report_"):
         _, _, user_id_str, lesson_id = callback_data.split("_", 3)
         await _approve(message, int(user_id_str), lesson_id, telegram_id)
