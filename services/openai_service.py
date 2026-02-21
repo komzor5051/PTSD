@@ -17,7 +17,7 @@ def get_client() -> genai.Client:
     return _client
 
 
-MODEL = "gemini-1.5-pro"
+MODEL = "gemini-2.5-flash"
 AUDIO_MODEL = "gemini-2.0-flash"
 
 QUESTIONNAIRE_SYSTEM_PROMPT = """Ты — военный психолог, специалист по ПТСР у участников боевых действий.
