@@ -95,13 +95,43 @@ async def _notify_managers(message: Message, user_id: int, lesson_id: str,
 
 async def remind_review(message: Message, state: dict, telegram_id: int, **kwargs):
     """Resend pending report to manager group as a reminder (triggered by user)."""
+    from handlers.lesson import _next_module, _current_lesson_id
     module = state.get("current_module", "")
     lesson_num = module.replace("m", "").replace("_lesson", "")
     lesson_id = f"lesson_{lesson_num}"
 
     report = await db.get_lesson_report(telegram_id, lesson_id)
+
     if not report:
-        await message.answer("⚠️ Отчёт не найден. Возможно, куратор уже проверяет его.")
+        # Report not pending — check if it was already approved but state wasn't updated
+        any_report = await db.get_latest_lesson_report(telegram_id, lesson_id)
+        if any_report and any_report.get("status") == "approved":
+            # Auto-fix stuck state: advance to next lesson
+            next_mod = _next_module(module)
+            if next_mod:
+                await db.update_user_state(telegram_id,
+                    current_module=next_mod,
+                    current_phase="theory",
+                    report_status=None,
+                )
+                next_num = next_mod.replace("m", "").replace("_lesson", "")
+                next_lesson = await db.get_lesson(f"lesson_{next_num}")
+                await message.answer(
+                    f"✅ Твой отчёт уже был принят куратором!\n\nНачинаем урок {next_num} 🎖️",
+                )
+                if next_lesson:
+                    await message.answer(
+                        f"📖 *Урок {next_num}: {next_lesson['title']}*\n\n"
+                        f"{next_lesson['theory_text']}",
+                        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                            InlineKeyboardButton(text="▶️ К практике", callback_data="lesson_practice"),
+                        ]]),
+                    )
+            else:
+                await db.update_user_state(telegram_id, current_module="course_complete", current_phase=None)
+                await message.answer("🎖️ Твой отчёт принят и курс завершён! Поздравляю!")
+        else:
+            await message.answer("⚠️ Отчёт не найден. Возможно, куратор уже проверяет его.")
         return
 
     user = message.chat

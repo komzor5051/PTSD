@@ -120,12 +120,26 @@ async def get_pending_reports() -> list[dict]:
 
 
 async def get_lesson_report(user_id: int, lesson_id: str) -> dict | None:
+    """Get pending report (for remind flow)."""
     client = get_client()
     result = await _run(lambda: client.table("ptsd_lesson_reports")
         .select("*")
         .eq("user_id", user_id)
         .eq("lesson_id", lesson_id)
         .eq("status", "pending")
+        .order("created_at", desc=True)
+        .limit(1)
+        .execute())
+    return result.data[0] if result.data else None
+
+
+async def get_latest_lesson_report(user_id: int, lesson_id: str) -> dict | None:
+    """Get most recent report regardless of status (pending/approved/rejected)."""
+    client = get_client()
+    result = await _run(lambda: client.table("ptsd_lesson_reports")
+        .select("*")
+        .eq("user_id", user_id)
+        .eq("lesson_id", lesson_id)
         .order("created_at", desc=True)
         .limit(1)
         .execute())
