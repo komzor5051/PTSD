@@ -1,18 +1,16 @@
-"""Gemini AI: voice transcription and text analysis/chat."""
+"""Gemini AI (text/analysis) + OpenRouter Whisper (transcription)."""
 import asyncio
+import io
 import json
-import tempfile
-import os
-from pathlib import Path
 
 import google.generativeai as genai
+from openai import OpenAI
 
 from config import settings
 
 genai.configure(api_key=settings.GEMINI_API_KEY)
 
 MODEL = "gemini-2.5-flash"
-AUDIO_MODEL = "gemini-1.5-flash"  # 2.5-flash не поддерживает аудио стабильно
 
 QUESTIONNAIRE_SYSTEM_PROMPT = """Ты — военный психолог, специалист по ПТСР у участников боевых действий.
 Проанализируй ответы на 32 вопроса скрининга ПТСР.
@@ -75,41 +73,22 @@ WEEKLY_CHECK_SYSTEM_PROMPT = """Проанализируй ответ участ
 
 
 async def transcribe(file_bytes: bytes, filename: str = "voice.ogg") -> str:
-    """Transcribe voice message via Gemini audio understanding."""
-    with tempfile.NamedTemporaryFile(suffix=Path(filename).suffix, delete=False) as tmp:
-        tmp.write(file_bytes)
-        tmp_path = tmp.name
-
+    """Transcribe voice message via OpenRouter (openai/whisper-1)."""
     def _do():
-        import time
-        uploaded = genai.upload_file(tmp_path, mime_type="audio/ogg")
+        client = OpenAI(
+            base_url="https://openrouter.ai/api/v1",
+            api_key=settings.OPENROUTER_API_KEY,
+        )
+        audio_file = io.BytesIO(file_bytes)
+        audio_file.name = filename
+        transcript = client.audio.transcriptions.create(
+            model="openai/whisper-1",
+            file=audio_file,
+            language="ru",
+        )
+        return transcript.text.strip()
 
-        # Wait until Gemini File API finishes processing the audio
-        for _ in range(15):
-            file_info = genai.get_file(uploaded.name)
-            if file_info.state.name == "ACTIVE":
-                break
-            if file_info.state.name == "FAILED":
-                raise RuntimeError(f"Gemini file processing failed: {file_info.name}")
-            time.sleep(2)
-        else:
-            raise RuntimeError("Gemini file processing timed out")
-
-        model = genai.GenerativeModel(AUDIO_MODEL)
-        response = model.generate_content([
-            "Транскрибируй это аудио на русском языке. Верни только текст, без пояснений.",
-            uploaded,
-        ])
-        try:
-            genai.delete_file(uploaded.name)
-        except Exception:
-            pass
-        return response.text.strip()
-
-    try:
-        return await asyncio.to_thread(_do)
-    finally:
-        os.unlink(tmp_path)
+    return await asyncio.to_thread(_do)
 
 
 async def analyze_questionnaire(answers: list[dict], user_name: str) -> dict:
