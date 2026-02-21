@@ -131,7 +131,7 @@ async def chat_with_psychologist(history: list[dict], user_message: str,
             config=types.GenerateContentConfig(
                 system_instruction=system_prompt,
                 temperature=0.7,
-                max_output_tokens=1500,
+                max_output_tokens=4500,
             ),
             history=gemini_history,
         )
