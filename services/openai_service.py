@@ -1,14 +1,24 @@
-"""Gemini AI: voice transcription and text analysis/chat."""
+"""Gemini AI: voice transcription and text analysis/chat (google-genai SDK)."""
 import asyncio
 import json
 
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
 from config import settings
 
-genai.configure(api_key=settings.GEMINI_API_KEY)
+_client: genai.Client | None = None
 
-MODEL = "gemini-2.5-flash"
+
+def get_client() -> genai.Client:
+    global _client
+    if _client is None:
+        _client = genai.Client(api_key=settings.GEMINI_API_KEY)
+    return _client
+
+
+MODEL = "gemini-2.0-flash"
+AUDIO_MODEL = "gemini-2.0-flash"
 
 QUESTIONNAIRE_SYSTEM_PROMPT = """Ты — военный психолог, специалист по ПТСР у участников боевых действий.
 Проанализируй ответы на 32 вопроса скрининга ПТСР.
@@ -71,13 +81,16 @@ WEEKLY_CHECK_SYSTEM_PROMPT = """Проанализируй ответ участ
 
 
 async def transcribe(file_bytes: bytes, filename: str = "voice.ogg") -> str:
-    """Transcribe voice message via Gemini inline audio (no File API, no upload)."""
+    """Transcribe voice message via Gemini inline audio."""
     def _do():
-        model = genai.GenerativeModel("gemini-1.5-flash")
-        response = model.generate_content([
-            {"mime_type": "audio/ogg", "data": file_bytes},
-            "Транскрибируй это аудио на русском языке. Верни только текст, без пояснений.",
-        ])
+        client = get_client()
+        response = client.models.generate_content(
+            model=AUDIO_MODEL,
+            contents=[
+                types.Part.from_bytes(data=file_bytes, mime_type="audio/ogg"),
+                "Транскрибируй это аудио на русском языке. Верни только текст, без пояснений.",
+            ],
+        )
         return response.text.strip()
 
     return await asyncio.to_thread(_do)
@@ -92,13 +105,12 @@ async def analyze_questionnaire(answers: list[dict], user_name: str) -> dict:
     prompt = f"Участник: {user_name}\n\nОтветы на анкету:\n{answers_text}"
 
     def _do():
-        model = genai.GenerativeModel(
-            MODEL,
-            system_instruction=QUESTIONNAIRE_SYSTEM_PROMPT,
-        )
-        response = model.generate_content(
-            prompt,
-            generation_config=genai.types.GenerationConfig(
+        client = get_client()
+        response = client.models.generate_content(
+            model=MODEL,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=QUESTIONNAIRE_SYSTEM_PROMPT,
                 response_mime_type="application/json",
                 temperature=0.3,
             ),
@@ -111,23 +123,25 @@ async def analyze_questionnaire(answers: list[dict], user_name: str) -> dict:
 async def chat_with_psychologist(history: list[dict], user_message: str) -> str:
     """Continue conversation with AI psychologist."""
     def _do():
-        model = genai.GenerativeModel(
-            MODEL,
-            system_instruction=PSYCHOLOGIST_SYSTEM_PROMPT,
-        )
+        client = get_client()
         gemini_history = []
         for msg in history:
             role = "user" if msg["role"] == "user" else "model"
-            gemini_history.append({"role": role, "parts": [msg["content"]]})
+            gemini_history.append(types.Content(
+                role=role,
+                parts=[types.Part.from_text(text=msg["content"])],
+            ))
 
-        chat = model.start_chat(history=gemini_history)
-        response = chat.send_message(
-            user_message,
-            generation_config=genai.types.GenerationConfig(
+        chat = client.chats.create(
+            model=MODEL,
+            config=types.GenerateContentConfig(
+                system_instruction=PSYCHOLOGIST_SYSTEM_PROMPT,
                 temperature=0.7,
                 max_output_tokens=1500,
             ),
+            history=gemini_history,
         )
+        response = chat.send_message(user_message)
         return response.text
 
     return await asyncio.to_thread(_do)
@@ -136,13 +150,12 @@ async def chat_with_psychologist(history: list[dict], user_message: str) -> str:
 async def analyze_weekly_check(response_text: str) -> dict:
     """Analyze weekly check response. Returns {ai_analysis, sentiment_score, crisis_detected}."""
     def _do():
-        model = genai.GenerativeModel(
-            MODEL,
-            system_instruction=WEEKLY_CHECK_SYSTEM_PROMPT,
-        )
-        response = model.generate_content(
-            response_text,
-            generation_config=genai.types.GenerationConfig(
+        client = get_client()
+        response = client.models.generate_content(
+            model=MODEL,
+            contents=response_text,
+            config=types.GenerateContentConfig(
+                system_instruction=WEEKLY_CHECK_SYSTEM_PROMPT,
                 response_mime_type="application/json",
                 temperature=0.3,
             ),
