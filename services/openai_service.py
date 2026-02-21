@@ -12,6 +12,7 @@ from config import settings
 genai.configure(api_key=settings.GEMINI_API_KEY)
 
 MODEL = "gemini-2.5-flash"
+AUDIO_MODEL = "gemini-1.5-flash"  # 2.5-flash не поддерживает аудио стабильно
 
 QUESTIONNAIRE_SYSTEM_PROMPT = """Ты — военный психолог, специалист по ПТСР у участников боевых действий.
 Проанализируй ответы на 32 вопроса скрининга ПТСР.
@@ -81,7 +82,7 @@ async def transcribe(file_bytes: bytes, filename: str = "voice.ogg") -> str:
 
     def _do():
         uploaded = genai.upload_file(tmp_path, mime_type="audio/ogg")
-        model = genai.GenerativeModel(MODEL)
+        model = genai.GenerativeModel(AUDIO_MODEL)
         response = model.generate_content([
             "Транскрибируй это аудио на русском языке. Верни только текст, без пояснений.",
             uploaded,
