@@ -52,6 +52,8 @@ async def handle(message: Message, callback_data: str, state: dict,
         await message.answer("Напиши мне что-нибудь или отправь голосовое.")
         return
 
+    first_name = (state.get("ptsd_users") or {}).get("first_name", "боец")
+
     # Crisis detection
     markers = detect_crisis(text)
     crisis_detected = bool(markers)
@@ -69,7 +71,7 @@ async def handle(message: Message, callback_data: str, state: dict,
     messages_for_ai = [{"role": h["role"], "content": h["content"]} for h in history]
 
     try:
-        response = await openai_service.chat_with_psychologist(messages_for_ai, text)
+        response = await openai_service.chat_with_psychologist(messages_for_ai, text, first_name)
     except Exception as e:
         logger.error("Psychologist call failed: %s", e)
         await message.answer("⚠️ Временная ошибка. Попробуй чуть позже.")
