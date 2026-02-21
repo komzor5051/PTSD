@@ -82,7 +82,7 @@ async def handle(message: Message, callback_data: str, state: dict,
         rating_val = callback_data.replace("rating_", "")
         rating = None if rating_val == "skip" else int(rating_val)
 
-        await db.update_user_state(telegram_id, current_phase="awaiting_report", lesson_rating=rating)
+        await db.update_user_state(telegram_id, current_phase="awaiting_report")
         await db.upsert_lesson_progress(telegram_id, lesson_id, status="in_progress", rating=rating)
 
         reward = lesson.get("reward_rub", 200)

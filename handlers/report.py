@@ -16,7 +16,10 @@ async def handle(message: Message, state: dict, telegram_id: int,
     module = state.get("current_module", "")
     lesson_num = module.replace("m", "").replace("_lesson", "")
     lesson_id = f"lesson_{lesson_num}"
-    rating = state.get("lesson_rating")
+
+    progress = await db.get_lesson_progress(telegram_id)
+    lesson_progress = next((p for p in progress if p.get("lesson_id") == lesson_id), None)
+    rating = lesson_progress.get("rating") if lesson_progress else None
 
     report_text = transcript or text
     if not report_text or len(report_text.strip()) < 3:
