@@ -81,7 +81,20 @@ async def transcribe(file_bytes: bytes, filename: str = "voice.ogg") -> str:
         tmp_path = tmp.name
 
     def _do():
+        import time
         uploaded = genai.upload_file(tmp_path, mime_type="audio/ogg")
+
+        # Wait until Gemini File API finishes processing the audio
+        for _ in range(15):
+            file_info = genai.get_file(uploaded.name)
+            if file_info.state.name == "ACTIVE":
+                break
+            if file_info.state.name == "FAILED":
+                raise RuntimeError(f"Gemini file processing failed: {file_info.name}")
+            time.sleep(2)
+        else:
+            raise RuntimeError("Gemini file processing timed out")
+
         model = genai.GenerativeModel(AUDIO_MODEL)
         response = model.generate_content([
             "Транскрибируй это аудио на русском языке. Верни только текст, без пояснений.",
