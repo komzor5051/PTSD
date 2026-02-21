@@ -56,24 +56,26 @@ async def handle(message: Message, callback_data: str, state: dict,
     markers = detect_crisis(text)
     crisis_detected = bool(markers)
 
-    await db.save_chat_message(telegram_id, "user", text,
-                                crisis_detected=crisis_detected, crisis_markers=markers)
-
     if crisis_detected:
+        await db.save_chat_message(telegram_id, "user", text,
+                                    crisis_detected=True, crisis_markers=markers)
         await handle_crisis(message.bot, telegram_id, message.chat.id)
         await db.save_chat_message(telegram_id, "assistant", CRISIS_MESSAGE, crisis_detected=True)
         return
 
+    # Fetch history BEFORE saving current message — prevents current message
+    # from appearing both in history[] and as user_message (would cause duplicate context)
     history = await db.get_chat_history(telegram_id)
-    openai_history = [{"role": h["role"], "content": h["content"]} for h in history]
+    messages_for_ai = [{"role": h["role"], "content": h["content"]} for h in history]
 
     try:
-        response = await openai_service.chat_with_psychologist(openai_history, text)
+        response = await openai_service.chat_with_psychologist(messages_for_ai, text)
     except Exception as e:
-        logger.error("Psychologist GPT-4 call failed: %s", e)
+        logger.error("Psychologist call failed: %s", e)
         await message.answer("⚠️ Временная ошибка. Попробуй чуть позже.")
         return
 
+    await db.save_chat_message(telegram_id, "user", text)
     await db.save_chat_message(telegram_id, "assistant", response)
 
     await message.answer(
