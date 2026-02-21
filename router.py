@@ -56,8 +56,8 @@ def _determine_routing(state: dict | None, callback: str, text: str, telegram_id
             callback in {"pause_week", "show_reminder_settings"}):
         return "reminder_settings"
 
-    # Psychologist
-    if callback == "chat_psychologist" or module == "ai_chat":
+    # Psychologist (button callback OR /chat_psychologist slash command)
+    if callback == "chat_psychologist" or text == "/chat_psychologist" or module == "ai_chat":
         return "psychologist"
 
     # Weekly check response

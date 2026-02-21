@@ -12,8 +12,8 @@ logger = logging.getLogger(__name__)
 
 async def handle(message: Message, callback_data: str, state: dict,
                  telegram_id: int, text: str, **kwargs):
-    # Entry point — switching to ai_chat mode
-    if callback_data == "chat_psychologist":
+    # Entry point — switching to ai_chat mode (button or /chat_psychologist command)
+    if callback_data == "chat_psychologist" or text == "/chat_psychologist":
         prev_module = state.get("current_module", "idle")
         await db.update_user_state(telegram_id,
             current_module="ai_chat",
