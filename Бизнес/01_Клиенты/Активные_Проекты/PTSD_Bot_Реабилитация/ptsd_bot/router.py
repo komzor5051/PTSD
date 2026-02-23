@@ -1,4 +1,5 @@
 """Main message router — mirrors MASTER_ROUTER_v2 routing logic exactly."""
+import asyncio
 import logging
 
 from aiogram import Router
@@ -9,6 +10,9 @@ from services.crisis import detect_crisis, handle_crisis
 
 logger = logging.getLogger(__name__)
 main_router = Router()
+
+BATCH_WINDOW_SEC = 1.5
+_message_batches: dict[int, dict] = {}  # user_id → {messages: list, task: asyncio.Task}
 
 
 async def _get_voice_text(message: Message) -> str | None:
@@ -93,7 +97,51 @@ def _determine_routing(state: dict | None, callback: str, text: str, telegram_id
 @main_router.message()
 async def handle_message(message: Message):
     telegram_id = message.from_user.id
-    text = message.text or ""
+
+    # Skip batching for voice and /commands — process immediately
+    if message.voice or (message.text and message.text.startswith("/")):
+        await _process_message(message, telegram_id)
+        return
+
+    # Buffer text messages with debounce
+    if telegram_id not in _message_batches:
+        _message_batches[telegram_id] = {"messages": [], "task": None}
+
+    batch = _message_batches[telegram_id]
+    batch["messages"].append(message)
+
+    # Reset debounce timer
+    if batch["task"] and not batch["task"].done():
+        batch["task"].cancel()
+
+    batch["task"] = asyncio.create_task(_flush_after_delay(telegram_id))
+
+
+async def _flush_after_delay(telegram_id: int):
+    """Debounce timer — flush batch after window expires."""
+    try:
+        await asyncio.sleep(BATCH_WINDOW_SEC)
+    except asyncio.CancelledError:
+        return
+
+    batch = _message_batches.pop(telegram_id, None)
+    if not batch or not batch["messages"]:
+        return
+
+    messages = batch["messages"]
+    first_message = messages[0]
+
+    if len(messages) == 1:
+        await _process_message(first_message, telegram_id)
+    else:
+        combined_text = "\n".join(m.text for m in messages if m.text)
+        logger.info("Batched %d messages from user %s", len(messages), telegram_id)
+        await _process_message(first_message, telegram_id, override_text=combined_text)
+
+
+async def _process_message(message: Message, telegram_id: int, override_text: str | None = None):
+    """Core message processing — routing + dispatch."""
+    text = override_text or message.text or ""
 
     # Transcribe voice if needed
     transcript = None

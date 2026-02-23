@@ -46,6 +46,15 @@ async def handle(message: Message, callback_data: str, state: dict,
     module = state.get("current_module", "")
     phase = state.get("current_phase") or "theory"
 
+    if module == "crisis_hold":
+        await message.answer(
+            "⚠️ Курс временно недоступен.\n\n"
+            "Рекомендуем сначала поговорить с психологом или обратиться на горячую линию:\n"
+            "📞 8-800-333-44-55 (бесплатно)\n"
+            "📞 8-800-2000-122 (телефон доверия)"
+        )
+        return
+
     if callback_data == "start_course":
         module = "m1_lesson"
         phase = "theory"
