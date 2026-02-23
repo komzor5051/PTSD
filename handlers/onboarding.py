@@ -71,8 +71,10 @@ async def handle_return_user(message: Message, telegram_id: int, first_name: str
         status = "Анкета пройдена. Можно начинать курс."
         action_btn = InlineKeyboardButton(text="▶️ Начать курс", callback_data="start_course")
     elif module == "crisis_hold":
-        status = "Рекомендуем обратиться к специалисту. Курс реабилитации доступен."
-        action_btn = InlineKeyboardButton(text="▶️ Начать курс реабилитации", callback_data="start_course")
+        status = ("Рекомендуем обратиться к специалисту.\n\n"
+                  "📞 8-800-333-44-55 (бесплатно)\n"
+                  "📞 8-800-2000-122 (телефон доверия)")
+        action_btn = InlineKeyboardButton(text="💬 Поговорить с психологом", callback_data="chat_psychologist")
     elif module == "course_complete":
         status = "Поздравляю! Ты прошёл весь курс."
         action_btn = InlineKeyboardButton(text="💬 Поговорить с психологом", callback_data="chat_psychologist")

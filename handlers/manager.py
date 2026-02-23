@@ -34,6 +34,12 @@ async def handle_rejection_reason(message: Message, telegram_id: int, text: str,
 
 async def _approve(message: Message, user_id: int, lesson_id: str, manager_id: int):
     try:
+        # Idempotency check — prevent double reward if two managers click simultaneously
+        report = await db.get_latest_lesson_report(user_id, lesson_id)
+        if not report or report.get("status") != "pending":
+            await message.answer("ℹ️ Отчёт уже обработан.")
+            return
+
         await db.rpc_approve_report(user_id, lesson_id, manager_id, "Принято")
 
         lesson = await db.get_lesson(lesson_id)

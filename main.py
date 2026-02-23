@@ -44,6 +44,9 @@ async def main():
     dp = Dispatcher()
     dp.include_router(main_router)
 
+    if settings.MANAGER_GROUP_CHAT_ID == 0:
+        logger.warning("MANAGER_GROUP_CHAT_ID not set! Reports won't reach managers.")
+
     scheduler = setup_scheduler(bot)
     scheduler.start()
     logger.info("Scheduler started with %d jobs", len(scheduler.get_jobs()))

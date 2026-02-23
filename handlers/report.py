@@ -13,7 +13,16 @@ logger = logging.getLogger(__name__)
 async def handle(message: Message, state: dict, telegram_id: int,
                  text: str, transcript: str | None, **kwargs):
     """Accept voice or text lesson report."""
+    if settings.MANAGER_GROUP_CHAT_ID == 0:
+        await message.answer("⚠️ Система отчётов временно недоступна. Обратись к куратору.")
+        return
+
     module = state.get("current_module", "")
+    if not module.startswith("m") or not module.endswith("_lesson"):
+        logger.error("report.handle called with invalid module=%s for user %s", module, telegram_id)
+        await message.answer("⚠️ Не могу принять отчёт — обратись к куратору.")
+        return
+
     lesson_num = module.replace("m", "").replace("_lesson", "")
     lesson_id = f"lesson_{lesson_num}"
 

@@ -63,11 +63,23 @@ async def handle_morning_mood(message: Message, callback_data: str, telegram_id:
 
     crisis = await db.rpc_check_morning_crisis(telegram_id)
 
-    if mood_score == 1 or crisis:
+    if crisis:  # 3 consecutive days with mood=1 → real crisis pattern
         await handle_crisis(message.bot, telegram_id, message.chat.id)
         return
 
-    mood_emojis = {1: "😫", 2: "😕", 3: "😐", 4: "🙂", 5: "😊"}
+    if mood_score <= 2:
+        # Bad day, but not a crisis pattern — supportive message without crisis_hold
+        await message.answer(
+            "Вижу, что сегодня непросто. Это нормально — бывают тяжёлые дни.\n\n"
+            "Если хочешь поговорить — психолог на связи.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="💬 Поговорить с психологом", callback_data="chat_psychologist")],
+                [InlineKeyboardButton(text="▶️ Продолжить занятие", callback_data="lesson_continue")],
+            ]),
+        )
+        return
+
+    mood_emojis = {3: "😐", 4: "🙂", 5: "😊"}
     emoji = mood_emojis.get(mood_score, "")
 
     await message.answer(
