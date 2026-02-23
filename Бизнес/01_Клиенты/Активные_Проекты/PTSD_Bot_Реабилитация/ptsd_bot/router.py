@@ -11,7 +11,7 @@ from services.crisis import detect_crisis, handle_crisis
 logger = logging.getLogger(__name__)
 main_router = Router()
 
-BATCH_WINDOW_SEC = 1.5
+BATCH_WINDOW_SEC = 5.0
 _message_batches: dict[int, dict] = {}  # user_id → {messages: list, task: asyncio.Task}
 
 
