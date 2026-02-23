@@ -109,6 +109,7 @@ async def handle_message(message: Message):
 
     batch = _message_batches[telegram_id]
     batch["messages"].append(message)
+    logger.info("Batch +1 for user %s (total=%d)", telegram_id, len(batch["messages"]))
 
     # Reset debounce timer
     if batch["task"] and not batch["task"].done():
