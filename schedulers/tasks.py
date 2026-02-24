@@ -34,6 +34,7 @@ async def send_daily_reminders(bot: Bot, hour: int):
                     InlineKeyboardButton(text="▶️ Начать занятие", callback_data="lesson_continue"),
                 ]]),
             )
+            await db.log_reminder(user["user_id"], "daily_lesson")
         except Exception as e:
             logger.warning("Failed to send reminder to %s: %s", user["user_id"], e)
 
@@ -58,6 +59,7 @@ async def send_morning_check(bot: Bot):
                 "☀️ *Доброе утро!*\n\nКак ты себя чувствуешь сегодня?",
                 reply_markup=keyboard,
             )
+            await db.log_reminder(user["user_id"], "morning_check")
         except Exception as e:
             logger.warning("Failed to send morning check to %s: %s", user["user_id"], e)
 
@@ -69,9 +71,12 @@ async def send_weekly_check(bot: Bot):
 
     for user in users:
         try:
+            # Fetch actual current_module — get_users_for_weekly_check RPC doesn't return it
+            fresh_state = await db.get_user_state(user["user_id"])
+            actual_module = (fresh_state or {}).get("current_module") or "idle"
             await db.update_user_state(
                 user["user_id"],
-                current_module_before_weekly=user.get("current_module"),
+                current_module_before_weekly=actual_module,
                 current_module="weekly_check",
             )
             await bot.send_message(

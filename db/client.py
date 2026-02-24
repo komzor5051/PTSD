@@ -318,6 +318,16 @@ async def rpc_check_morning_crisis(user_id: int) -> bool:
     return bool(result.data)
 
 
+async def log_reminder(user_id: int, reminder_type: str, escalation_level: int = 0) -> None:
+    """Log sent reminder to ptsd_reminder_logs for escalation tracking."""
+    client = get_client()
+    await _run(lambda: client.table("ptsd_reminder_logs").insert({
+        "user_id": user_id,
+        "reminder_type": reminder_type,
+        "escalation_level": escalation_level,
+    }).execute())
+
+
 async def rpc_update_activity_on_lesson(user_id: int, completed: bool) -> None:
     client = get_client()
     await _run(lambda: client.rpc("update_user_activity_on_lesson", {

@@ -15,12 +15,30 @@ _pending_rejections: dict[int, tuple[int, str]] = {}
 async def handle(message: Message, callback_data: str, telegram_id: int, **kwargs):
     """Handle approve/reject callbacks from manager group."""
     if callback_data.startswith("approve_report_"):
-        _, _, user_id_str, lesson_id = callback_data.split("_", 3)
-        await _approve(message, int(user_id_str), lesson_id, telegram_id)
+        parts = callback_data.split("_", 3)
+        if len(parts) != 4:
+            await message.answer("⚠️ Некорректный callback кнопки.")
+            return
+        _, _, user_id_str, lesson_id = parts
+        try:
+            user_id = int(user_id_str)
+        except ValueError:
+            await message.answer(f"⚠️ Некорректный user_id в callback: {user_id_str!r}")
+            return
+        await _approve(message, user_id, lesson_id, telegram_id)
 
     elif callback_data.startswith("reject_report_"):
-        _, _, user_id_str, lesson_id = callback_data.split("_", 3)
-        await _ask_reject_reason(message, int(user_id_str), lesson_id, telegram_id)
+        parts = callback_data.split("_", 3)
+        if len(parts) != 4:
+            await message.answer("⚠️ Некорректный callback кнопки.")
+            return
+        _, _, user_id_str, lesson_id = parts
+        try:
+            user_id = int(user_id_str)
+        except ValueError:
+            await message.answer(f"⚠️ Некорректный user_id в callback: {user_id_str!r}")
+            return
+        await _ask_reject_reason(message, user_id, lesson_id, telegram_id)
 
 
 async def handle_rejection_reason(message: Message, telegram_id: int, text: str, **kwargs):
@@ -34,6 +52,15 @@ async def handle_rejection_reason(message: Message, telegram_id: int, text: str,
 
 async def _approve(message: Message, user_id: int, lesson_id: str, manager_id: int):
     try:
+        # Validate lesson_id format (e.g. "lesson_1" .. "lesson_10")
+        lesson_num_str = lesson_id.replace("lesson_", "")
+        if not lesson_num_str.isdigit():
+            await message.answer(
+                f"⚠️ Устаревшая кнопка (lesson_id={lesson_id!r}).\n"
+                "Попроси участника заново отправить отчёт."
+            )
+            return
+
         # Idempotency check — prevent double reward if two managers click simultaneously
         report = await db.get_latest_lesson_report(user_id, lesson_id)
         if not report or report.get("status") != "pending":
@@ -42,10 +69,8 @@ async def _approve(message: Message, user_id: int, lesson_id: str, manager_id: i
 
         await db.rpc_approve_report(user_id, lesson_id, manager_id, "Принято")
 
-        lesson = await db.get_lesson(lesson_id)
-        reward = lesson.get("reward_rub", 200) if lesson else 200
-        await db.rpc_increment_rewards(user_id, reward)
-
+        # Advance state FIRST — before reward calc, so any failure there
+        # doesn't leave the user permanently stuck on awaiting_review.
         lesson_num = lesson_id.replace("lesson_", "")
         current_module = f"m{lesson_num}_lesson"
         next_mod = _next_module(current_module)
@@ -57,6 +82,14 @@ async def _approve(message: Message, user_id: int, lesson_id: str, manager_id: i
                 report_status=None,
             )
             await db.rpc_update_activity_on_lesson(user_id, completed=True)
+        else:
+            await db.update_user_state(user_id, current_module="course_complete", current_phase=None)
+
+        lesson = await db.get_lesson(lesson_id)
+        reward = lesson.get("reward_rub", 200) if lesson else 200
+        await db.rpc_increment_rewards(user_id, reward)
+
+        if next_mod:
             next_num = next_mod.replace("m", "").replace("_lesson", "")
             next_lesson_id = f"lesson_{next_num}"
             next_lesson = await db.get_lesson(next_lesson_id)
@@ -89,7 +122,6 @@ async def _approve(message: Message, user_id: int, lesson_id: str, manager_id: i
                     ]]),
                 )
         else:
-            await db.update_user_state(user_id, current_module="course_complete", current_phase=None)
             await message.bot.send_message(
                 user_id,
                 f"🎖️ *Поздравляю! Ты завершил всю программу реабилитации!*\n\n"

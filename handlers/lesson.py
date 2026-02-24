@@ -131,8 +131,16 @@ async def handle(message: Message, callback_data: str, state: dict,
                 reply_markup=_phase_keyboard("exercise"),
             )
 
+        case "awaiting_rating":
+            # User sent a text message instead of tapping a rating button — resend keyboard
+            await message.answer(
+                "📊 *Оцени своё состояние после упражнения*\n\n"
+                "Как ты себя чувствуешь сейчас?\n"
+                "_(1 — очень плохо, 10 — отлично)_",
+                reply_markup=_rating_keyboard(),
+            )
+
         case _:
-            # Unexpected phase (e.g. awaiting_review, awaiting_rating) — default to theory
             logger.warning("Unexpected phase '%s' in lesson handler for user %s, defaulting to theory", phase, telegram_id)
             await db.update_user_state(telegram_id, current_phase="theory")
             await message.answer(

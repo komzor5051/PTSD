@@ -32,7 +32,22 @@ async def handle(message: Message, state: dict, telegram_id: int, text: str, **k
 
     await db.save_weekly_check(telegram_id, text, analysis, sentiment, crisis)
 
-    prev_module = state.get("current_module_before_weekly") or "idle"
+    prev_module = state.get("current_module_before_weekly")
+    if not prev_module or prev_module in ("weekly_check", "idle", ""):
+        # Lost track of where user was — recover from lesson progress rather than
+        # resetting to idle (which would trigger onboarding flow again).
+        progress_list = await db.get_lesson_progress(telegram_id)
+        in_progress = next(
+            (p for p in sorted(progress_list, key=lambda x: x.get("updated_at", ""), reverse=True)
+             if p.get("status") == "in_progress"),
+            None,
+        )
+        if in_progress:
+            num = in_progress["lesson_id"].replace("lesson_", "")
+            prev_module = f"m{num}_lesson"
+        else:
+            prev_module = "complete"
+        logger.warning("current_module_before_weekly missing for user %s, recovered to %s", telegram_id, prev_module)
     await db.update_user_state(telegram_id, current_module=prev_module)
 
     if crisis:
