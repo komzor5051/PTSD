@@ -80,9 +80,20 @@ async def handle(message: Message, callback_data: str, state: dict,
     await db.save_chat_message(telegram_id, "user", text)
     await db.save_chat_message(telegram_id, "assistant", response)
 
-    await message.answer(
-        response,
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="🔙 К занятиям", callback_data="return_to_lesson"),
-        ]]),
-    )
+    try:
+        await message.answer(
+            response,
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="🔙 К занятиям", callback_data="return_to_lesson"),
+            ]]),
+        )
+    except Exception as e:
+        logger.error("Failed to send psychologist response (markdown issue?): %s", e)
+        # Retry without parse_mode to bypass markdown errors
+        await message.answer(
+            response,
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="🔙 К занятиям", callback_data="return_to_lesson"),
+            ]]),
+            parse_mode=None,
+        )

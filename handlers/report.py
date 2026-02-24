@@ -109,6 +109,9 @@ async def remind_review(message: Message, state: dict, telegram_id: int, **kwarg
     """Resend pending report to manager group as a reminder (triggered by user)."""
     from handlers.lesson import _next_module, _current_lesson_id
     module = state.get("current_module", "")
+    if not module.startswith("m") or not module.endswith("_lesson"):
+        await message.answer("⚠️ Нет активного урока. Обратись к куратору.")
+        return
     lesson_num = module.replace("m", "").replace("_lesson", "")
     lesson_id = f"lesson_{lesson_num}"
 

@@ -51,16 +51,19 @@ async def handle_rejection_reason(message: Message, telegram_id: int, text: str,
 
 
 async def _approve(message: Message, user_id: int, lesson_id: str, manager_id: int):
-    try:
-        # Validate lesson_id format (e.g. "lesson_1" .. "lesson_10")
-        lesson_num_str = lesson_id.replace("lesson_", "")
-        if not lesson_num_str.isdigit():
-            await message.answer(
-                f"⚠️ Устаревшая кнопка (lesson_id={lesson_id!r}).\n"
-                "Попроси участника заново отправить отчёт."
-            )
-            return
+    # Validate lesson_id format (e.g. "lesson_1" .. "lesson_10")
+    lesson_num_str = lesson_id.replace("lesson_", "")
+    if not lesson_num_str.isdigit():
+        await message.answer(
+            f"⚠️ Устаревшая кнопка (lesson_id={lesson_id!r}).\n"
+            "Попроси участника заново отправить отчёт."
+        )
+        return
 
+    # ── Phase 1: DB operations (critical) ────────────────────────────────────
+    # If anything here fails, we abort and show manager an error.
+    # State is advanced BEFORE reward so a reward failure never leaves user stuck.
+    try:
         # Idempotency check — prevent double reward if two managers click simultaneously
         report = await db.get_latest_lesson_report(user_id, lesson_id)
         if not report or report.get("status") != "pending":
@@ -69,8 +72,6 @@ async def _approve(message: Message, user_id: int, lesson_id: str, manager_id: i
 
         await db.rpc_approve_report(user_id, lesson_id, manager_id, "Принято")
 
-        # Advance state FIRST — before reward calc, so any failure there
-        # doesn't leave the user permanently stuck on awaiting_review.
         lesson_num = lesson_id.replace("lesson_", "")
         current_module = f"m{lesson_num}_lesson"
         next_mod = _next_module(current_module)
@@ -89,12 +90,20 @@ async def _approve(message: Message, user_id: int, lesson_id: str, manager_id: i
         reward = lesson.get("reward_rub", 200) if lesson else 200
         await db.rpc_increment_rewards(user_id, reward)
 
+    except Exception as e:
+        logger.error("DB error during approve for user %s lesson %s: %s", user_id, lesson_id, e)
+        await message.answer(f"⚠️ Ошибка БД при принятии отчёта: {e}")
+        return
+
+    # ── Phase 2: Notify user (best-effort) ───────────────────────────────────
+    # DB is already committed. Telegram delivery failure must NOT roll back state
+    # or block manager confirmation. Manager always sees the real outcome.
+    try:
         if next_mod:
             next_num = next_mod.replace("m", "").replace("_lesson", "")
             next_lesson_id = f"lesson_{next_num}"
             next_lesson = await db.get_lesson(next_lesson_id)
 
-            # Notify user: report accepted + reward
             await message.bot.send_message(
                 user_id,
                 f"✅ *Отчёт принят!*\n\n"
@@ -102,7 +111,6 @@ async def _approve(message: Message, user_id: int, lesson_id: str, manager_id: i
                 f"Начинаем урок {next_num}! 🎖️",
             )
 
-            # Immediately send next lesson theory — no button click needed
             if next_lesson:
                 await message.bot.send_message(
                     user_id,
@@ -129,11 +137,15 @@ async def _approve(message: Message, user_id: int, lesson_id: str, manager_id: i
                 "Это большой шаг. Ты справился. ✅"
             )
 
-        await message.answer(f"✅ Отчёт пользователя {user_id} принят, начислено {reward}₽")
-
     except Exception as e:
-        logger.error("Failed to approve report for user %s lesson %s: %s", user_id, lesson_id, e)
-        await message.answer(f"⚠️ Ошибка при принятии отчёта: {e}")
+        logger.error("Failed to notify user %s after approve (DB already committed): %s", user_id, e)
+        await message.answer(
+            f"✅ Отчёт пользователя {user_id} принят, начислено {reward}₽.\n"
+            f"⚠️ Уведомление участнику не доставлено — скажи ему написать /start."
+        )
+        return
+
+    await message.answer(f"✅ Отчёт пользователя {user_id} принят, начислено {reward}₽")
 
 
 async def _ask_reject_reason(message: Message, user_id: int, lesson_id: str, manager_id: int):
@@ -145,13 +157,29 @@ async def _ask_reject_reason(message: Message, user_id: int, lesson_id: str, man
 
 
 async def _reject(message: Message, user_id: int, lesson_id: str, manager_id: int, reason: str):
-    await db.rpc_reject_report(user_id, lesson_id, manager_id, reason)
-    await db.update_user_state(user_id, current_phase="awaiting_report", report_status="awaiting_report")
+    # ── Phase 1: DB operations ────────────────────────────────────────────────
+    try:
+        await db.rpc_reject_report(user_id, lesson_id, manager_id, reason)
+        await db.update_user_state(user_id, current_phase="awaiting_report", report_status="awaiting_report")
+    except Exception as e:
+        logger.error("DB error during reject for user %s lesson %s: %s", user_id, lesson_id, e)
+        await message.answer(f"⚠️ Ошибка БД при отклонении отчёта: {e}")
+        return
 
-    await message.bot.send_message(
-        user_id,
-        f"❌ *Отчёт отклонён*\n\n"
-        f"Причина: {reason}\n\n"
-        "Пожалуйста, повтори упражнение и отправь новый отчёт."
-    )
+    # ── Phase 2: Notify user (best-effort) ───────────────────────────────────
+    try:
+        await message.bot.send_message(
+            user_id,
+            f"❌ *Отчёт отклонён*\n\n"
+            f"Причина: {reason}\n\n"
+            "Пожалуйста, повтори упражнение и отправь новый отчёт."
+        )
+    except Exception as e:
+        logger.error("Failed to notify user %s after reject (DB already committed): %s", user_id, e)
+        await message.answer(
+            f"❌ Отчёт пользователя {user_id} отклонён.\n"
+            f"⚠️ Уведомление участнику не доставлено — скажи ему написать /start."
+        )
+        return
+
     await message.answer(f"❌ Отчёт пользователя {user_id} отклонён")

@@ -11,7 +11,7 @@ from services.crisis import detect_crisis, handle_crisis
 logger = logging.getLogger(__name__)
 main_router = Router()
 
-BATCH_WINDOW_SEC = 1.5
+BATCH_WINDOW_SEC = 15.0
 _message_batches: dict[int, dict] = {}  # user_id → {messages: list, task: asyncio.Task}
 
 
@@ -109,6 +109,7 @@ async def handle_message(message: Message):
 
     batch = _message_batches[telegram_id]
     batch["messages"].append(message)
+    logger.info("Batch +1 for user %s (total=%d)", telegram_id, len(batch["messages"]))
 
     # Reset debounce timer
     if batch["task"] and not batch["task"].done():
