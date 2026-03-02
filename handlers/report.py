@@ -57,18 +57,30 @@ async def handle(message: Message, state: dict, telegram_id: int,
         report_status="awaiting_review",
     )
 
-    await _notify_managers(message, telegram_id, lesson_id, lesson_num, report_text, rating)
+    sent = await _notify_managers(message, telegram_id, lesson_id, lesson_num, report_text, rating)
 
-    await message.answer(
-        "✅ *Отчёт отправлен!*\n\n"
-        "Куратор проверит его в течение 24 часов.\n"
-        "После проверки тебе придёт уведомление."
-    )
+    if sent:
+        await message.answer(
+            "✅ *Отчёт отправлен!*\n\n"
+            "Куратор проверит его в течение 24 часов.\n"
+            "После проверки тебе придёт уведомление."
+        )
+    else:
+        await message.answer(
+            "✅ *Отчёт сохранён,* но уведомление куратору не доставлено.\n\n"
+            "Попробуй нажать «Напомнить куратору» позже, или обратись к координатору.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="🔔 Напомнить куратору", callback_data="remind_report"),
+            ]]),
+        )
 
 
 async def _notify_managers(message: Message, user_id: int, lesson_id: str,
-                            lesson_num: str, report_text: str, rating: int | None):
-    """Send report to manager group with approve/reject buttons."""
+                            lesson_num: str, report_text: str, rating: int | None) -> bool:
+    """Send report to manager group with approve/reject buttons. Returns True if sent.
+
+    Uses parse_mode=None so NO user content (username, report text) can break delivery.
+    """
     user = message.chat
     first_name = user.first_name or "боец"
     username = f"@{user.username}" if getattr(user, "username", None) else str(user_id)
@@ -93,88 +105,96 @@ async def _notify_managers(message: Message, user_id: int, lesson_id: str,
         await message.bot.send_message(
             chat_id=settings.MANAGER_GROUP_CHAT_ID,
             text=(
-                f"📋 *Новый отчёт*\n\n"
-                f"*Участник:* {first_name} ({username})\n"
-                f"*Урок:* {lesson_num}\n"
-                f"*Оценка состояния:* {rating_text}\n\n"
-                f"*Отчёт:*\n{truncated}"
+                f"📋 Новый отчёт\n\n"
+                f"Участник: {first_name} ({username})\n"
+                f"Урок: {lesson_num}\n"
+                f"Оценка состояния: {rating_text}\n\n"
+                f"Отчёт:\n{truncated}"
             ),
             reply_markup=keyboard,
+            parse_mode=None,
         )
+        return True
     except Exception as e:
-        logger.error("Failed to notify managers: %s", e)
+        logger.error("Failed to notify managers (chat_id=%s): %s", settings.MANAGER_GROUP_CHAT_ID, e)
+        return False
 
 
 async def remind_review(message: Message, state: dict, telegram_id: int, **kwargs):
     """Resend pending report to manager group as a reminder (triggered by user)."""
-    from handlers.lesson import _next_module, _current_lesson_id
-    module = state.get("current_module", "")
-    if not module.startswith("m") or not module.endswith("_lesson"):
-        await message.answer("⚠️ Нет активного урока. Обратись к куратору.")
-        return
-    lesson_num = module.replace("m", "").replace("_lesson", "")
-    lesson_id = f"lesson_{lesson_num}"
-
-    report = await db.get_lesson_report(telegram_id, lesson_id)
-
-    if not report:
-        # Report not pending — check if it was already approved but state wasn't updated
-        any_report = await db.get_latest_lesson_report(telegram_id, lesson_id)
-        if any_report and any_report.get("status") == "approved":
-            # Auto-fix stuck state: advance to next lesson
-            next_mod = _next_module(module)
-            if next_mod:
-                await db.update_user_state(telegram_id,
-                    current_module=next_mod,
-                    current_phase="theory",
-                    report_status=None,
-                )
-                next_num = next_mod.replace("m", "").replace("_lesson", "")
-                next_lesson = await db.get_lesson(f"lesson_{next_num}")
-                await message.answer(
-                    f"✅ Твой отчёт уже был принят куратором!\n\nНачинаем урок {next_num} 🎖️",
-                )
-                if next_lesson:
-                    await message.answer(
-                        f"📖 *Урок {next_num}: {next_lesson['title']}*\n\n"
-                        f"{next_lesson['theory_text']}",
-                        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
-                            InlineKeyboardButton(text="▶️ К практике", callback_data="lesson_practice"),
-                        ]]),
-                    )
-            else:
-                await db.update_user_state(telegram_id, current_module="course_complete", current_phase=None)
-                await message.answer("🎖️ Твой отчёт принят и курс завершён! Поздравляю!")
-        else:
-            await message.answer("⚠️ Отчёт не найден. Возможно, куратор уже проверяет его.")
-        return
-
-    user = message.chat
-    first_name = user.first_name or "боец"
-    username = f"@{user.username}" if getattr(user, "username", None) else str(telegram_id)
-    rating = report.get("rating")
-    report_text = report.get("report_text", "")
-    rating_text = f"{rating}/10" if rating is not None else "не указана"
-    truncated = report_text[:500] + "..." if len(report_text) > 500 else report_text
-
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="✅ Принять", callback_data=f"approve_report_{telegram_id}_{lesson_id}"),
-        InlineKeyboardButton(text="❌ Отклонить", callback_data=f"reject_report_{telegram_id}_{lesson_id}"),
-    ]])
-
     try:
+        from handlers.lesson import _next_module, _current_lesson_id
+        module = state.get("current_module", "")
+        if not module.startswith("m") or not module.endswith("_lesson"):
+            await message.answer("⚠️ Нет активного урока. Обратись к куратору.")
+            return
+        lesson_num = module.replace("m", "").replace("_lesson", "")
+        lesson_id = f"lesson_{lesson_num}"
+
+        report = await db.get_lesson_report(telegram_id, lesson_id)
+
+        if not report:
+            # Report not pending — check if it was already approved but state wasn't updated
+            any_report = await db.get_latest_lesson_report(telegram_id, lesson_id)
+            if any_report and any_report.get("status") == "approved":
+                # Auto-fix stuck state: advance to next lesson
+                next_mod = _next_module(module)
+                if next_mod:
+                    await db.update_user_state(telegram_id,
+                        current_module=next_mod,
+                        current_phase="theory",
+                        report_status=None,
+                    )
+                    next_num = next_mod.replace("m", "").replace("_lesson", "")
+                    next_lesson = await db.get_lesson(f"lesson_{next_num}")
+                    await message.answer(
+                        f"✅ Твой отчёт уже был принят куратором!\n\nНачинаем урок {next_num} 🎖️",
+                    )
+                    if next_lesson:
+                        await message.answer(
+                            f"📖 *Урок {next_num}: {next_lesson['title']}*\n\n"
+                            f"{next_lesson['theory_text']}",
+                            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                                InlineKeyboardButton(text="▶️ К практике", callback_data="lesson_practice"),
+                            ]]),
+                        )
+                else:
+                    await db.update_user_state(telegram_id, current_module="course_complete", current_phase=None)
+                    await message.answer("🎖️ Твой отчёт принят и курс завершён! Поздравляю!")
+            else:
+                await message.answer("⚠️ Отчёт не найден. Возможно, куратор уже проверяет его.")
+            return
+
+        first_name = state.get("ptsd_users", {}).get("first_name", "боец")
+        user = message.chat
+        username = f"@{user.username}" if getattr(user, "username", None) else str(telegram_id)
+        rating = report.get("rating")
+        report_text = report.get("report_text", "")
+        rating_text = f"{rating}/10" if rating is not None else "не указана"
+        truncated = report_text[:500] + "..." if len(report_text) > 500 else report_text
+
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="✅ Принять", callback_data=f"approve_report_{telegram_id}_{lesson_id}"),
+            InlineKeyboardButton(text="❌ Отклонить", callback_data=f"reject_report_{telegram_id}_{lesson_id}"),
+        ]])
+
         await message.bot.send_message(
             chat_id=settings.MANAGER_GROUP_CHAT_ID,
             text=(
-                f"🔔 *НАПОМИНАНИЕ*\n\n"
-                f"*Участник:* {first_name} ({username})\n"
-                f"*Урок:* {lesson_num}\n"
-                f"*Оценка состояния:* {rating_text}\n\n"
-                f"*Отчёт:*\n{truncated}"
+                f"🔔 НАПОМИНАНИЕ\n\n"
+                f"Участник: {first_name} ({username})\n"
+                f"Урок: {lesson_num}\n"
+                f"Оценка состояния: {rating_text}\n\n"
+                f"Отчёт:\n{truncated}"
             ),
             reply_markup=keyboard,
+            parse_mode=None,
         )
         await message.answer("✅ Напоминание отправлено куратору.")
+
     except Exception as e:
-        logger.error("Failed to send reminder to managers: %s", e)
-        await message.answer("⚠️ Не удалось отправить напоминание. Попробуй позже.")
+        logger.error("remind_review failed for user %s: %s", telegram_id, e, exc_info=True)
+        try:
+            await message.answer("⚠️ Не удалось отправить напоминание. Попробуй позже.")
+        except Exception:
+            logger.error("Failed to even send error message to user %s", telegram_id)
