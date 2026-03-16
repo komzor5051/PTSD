@@ -20,7 +20,11 @@ logger = logging.getLogger(__name__)
 
 async def send_daily_reminders(bot: Bot, hour: int):
     """Mirror: DAILY_REMINDER_FLOW — 9:00 and 20:00."""
-    users = await db.rpc_get_users_for_daily_reminder(hour)
+    try:
+        users = await db.rpc_get_users_for_daily_reminder(hour)
+    except Exception as e:
+        logger.error("Daily reminder [%d:00]: failed to fetch users: %s", hour, e)
+        return
     logger.info("Daily reminder [%d:00]: %d users", hour, len(users))
 
     for user in users:
@@ -41,7 +45,11 @@ async def send_daily_reminders(bot: Bot, hour: int):
 
 async def send_morning_check(bot: Bot):
     """Mirror: MORNING_CHECK_FLOW — 10:00 daily mood survey."""
-    users = await db.rpc_get_users_for_morning_check()
+    try:
+        users = await db.rpc_get_users_for_morning_check()
+    except Exception as e:
+        logger.error("Morning check: failed to fetch users: %s", e)
+        return
     logger.info("Morning check: %d users", len(users))
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[[
@@ -66,7 +74,11 @@ async def send_morning_check(bot: Bot):
 
 async def send_weekly_check(bot: Bot):
     """Mirror: WEEKLY_CHECK_FLOW — Sunday 19:00."""
-    users = await db.rpc_get_users_for_weekly_check()
+    try:
+        users = await db.rpc_get_users_for_weekly_check()
+    except Exception as e:
+        logger.error("Weekly check: failed to fetch users: %s", e)
+        return
     logger.info("Weekly check: %d users", len(users))
 
     for user in users:
@@ -93,7 +105,11 @@ async def send_weekly_check(bot: Bot):
 async def run_escalation(bot: Bot):
     """Mirror: ESCALATION_FLOW — every 30 min, 3 escalation levels."""
     for level in [1, 2, 3]:
-        users = await db.rpc_get_users_for_escalation(level)
+        try:
+            users = await db.rpc_get_users_for_escalation(level)
+        except Exception as e:
+            logger.error("Escalation L%d: failed to fetch users: %s", level, e)
+            continue
         for user in users:
             try:
                 msg = _escalation_message(level, user.get("first_name", "боец"))
@@ -121,7 +137,11 @@ def _escalation_message(level: int, name: str) -> str:
 
 async def send_inactivity_push(bot: Bot):
     """Mirror: INACTIVITY_PUSH_FLOW — every 2h, targets 24h+ inactive users."""
-    users = await db.rpc_get_inactive_users(hours=24)
+    try:
+        users = await db.rpc_get_inactive_users(hours=24)
+    except Exception as e:
+        logger.error("Inactivity push: failed to fetch users: %s", e)
+        return
     logger.info("Inactivity push: %d users", len(users))
 
     for user in users:

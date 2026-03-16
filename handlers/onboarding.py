@@ -49,10 +49,11 @@ async def handle_return_user(message: Message, telegram_id: int, first_name: str
     module = state.get("current_module", "idle")
     phase = state.get("current_phase")
 
-    # If user was in AI chat, reset to idle first (mirrors 'Reset State If AI Chat' node)
+    # If user was in AI chat, restore the module they came from (not idle)
     if module == "ai_chat":
-        await db.update_user_state(telegram_id, current_module="idle")
-        module = "idle"
+        return_module = state.get("ai_chat_return_module") or "idle"
+        await db.update_user_state(telegram_id, current_module=return_module)
+        module = return_module
 
     # Determine context-aware status text and primary action button
     if phase == "awaiting_review":
@@ -91,11 +92,12 @@ async def handle_return_user(message: Message, telegram_id: int, first_name: str
         status = "Рад снова тебя видеть."
         action_btn = InlineKeyboardButton(text="▶️ Начать программу", callback_data="onboarding_accept")
 
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [action_btn],
-        [InlineKeyboardButton(text="💬 Поговорить с психологом", callback_data="chat_psychologist")],
-        [InlineKeyboardButton(text="⚙️ Настройки напоминаний", callback_data="show_reminder_settings")],
-    ])
+    rows = [[action_btn]]
+    # Only add psychologist button if it's not already the action button (avoids duplicates)
+    if action_btn.callback_data != "chat_psychologist":
+        rows.append([InlineKeyboardButton(text="💬 Поговорить с психологом", callback_data="chat_psychologist")])
+    rows.append([InlineKeyboardButton(text="⚙️ Настройки напоминаний", callback_data="show_reminder_settings")])
+    keyboard = InlineKeyboardMarkup(inline_keyboard=rows)
 
     await message.answer(
         f"🎖️ *С возвращением, {first_name}!*\n\n{status}\n\nЧто хочешь сделать?",
