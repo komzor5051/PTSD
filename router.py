@@ -96,6 +96,11 @@ def _determine_routing(state: dict | None, callback: str, text: str, telegram_id
 
 @main_router.message()
 async def handle_message(message: Message):
+    from config import settings
+    # Ignore all non-command messages from manager group — only callbacks are processed there
+    if message.chat.id == settings.MANAGER_GROUP_CHAT_ID and settings.MANAGER_GROUP_CHAT_ID != 0:
+        return
+
     telegram_id = message.from_user.id
 
     # Skip batching for voice and /commands — process immediately
@@ -162,16 +167,30 @@ async def _process_message(message: Message, telegram_id: int, override_text: st
 
 @main_router.callback_query()
 async def handle_callback(callback: CallbackQuery):
+    from config import settings
     telegram_id = callback.from_user.id
     callback_data = callback.data or ""
+
+    # From manager group — only process manager callbacks, ignore everything else
+    is_manager_group = (
+        settings.MANAGER_GROUP_CHAT_ID != 0
+        and callback.message.chat.id == settings.MANAGER_GROUP_CHAT_ID
+    )
+    if is_manager_group and not (
+        callback_data.startswith("approve_report_") or callback_data.startswith("reject_report_")
+    ):
+        await callback.answer()
+        return
 
     await callback.answer()  # Remove loading spinner
 
     # Delete the previous message with buttons (mirrors n8n deleteMessage pattern)
-    try:
-        await callback.message.delete()
-    except Exception:
-        pass  # continueOnFail: true
+    # Skip deletion in manager group — managers need to see the report card
+    if not is_manager_group:
+        try:
+            await callback.message.delete()
+        except Exception:
+            pass  # continueOnFail: true
 
     state = await db.get_user_state(telegram_id)
     routing = _determine_routing(state, callback_data, "", telegram_id)
