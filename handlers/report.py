@@ -122,6 +122,10 @@ async def _notify_managers(message: Message, user_id: int, lesson_id: str,
 
 async def remind_review(message: Message, state: dict, telegram_id: int, **kwargs):
     """Resend pending report to manager group as a reminder (triggered by user)."""
+    if settings.MANAGER_GROUP_CHAT_ID == 0:
+        await message.answer("⚠️ Система отчётов временно недоступна. Обратись к куратору напрямую.")
+        return
+
     try:
         from handlers.lesson import _next_module, _current_lesson_id
         module = state.get("current_module", "")
@@ -178,23 +182,31 @@ async def remind_review(message: Message, state: dict, telegram_id: int, **kwarg
             InlineKeyboardButton(text="❌ Отклонить", callback_data=f"reject_report_{telegram_id}_{lesson_id}"),
         ]])
 
-        await message.bot.send_message(
-            chat_id=settings.MANAGER_GROUP_CHAT_ID,
-            text=(
-                f"🔔 НАПОМИНАНИЕ\n\n"
-                f"Участник: {first_name} ({username})\n"
-                f"Урок: {lesson_num}\n"
-                f"Оценка состояния: {rating_text}\n\n"
-                f"Отчёт:\n{truncated}"
-            ),
-            reply_markup=keyboard,
-            parse_mode=None,
-        )
-        await message.answer("✅ Напоминание отправлено куратору.")
+        try:
+            await message.bot.send_message(
+                chat_id=settings.MANAGER_GROUP_CHAT_ID,
+                text=(
+                    f"🔔 НАПОМИНАНИЕ\n\n"
+                    f"Участник: {first_name} ({username})\n"
+                    f"Урок: {lesson_num}\n"
+                    f"Оценка состояния: {rating_text}\n\n"
+                    f"Отчёт:\n{truncated}"
+                ),
+                reply_markup=keyboard,
+                parse_mode=None,
+            )
+            await message.answer("✅ Напоминание отправлено куратору.")
+        except Exception as e:
+            logger.error("remind_review: send_message to manager group failed (chat_id=%s): %s",
+                         settings.MANAGER_GROUP_CHAT_ID, e)
+            await message.answer(
+                "⚠️ Не удалось связаться с группой кураторов.\n\n"
+                "Отчёт сохранён в системе — куратор проверит его при следующем входе."
+            )
 
     except Exception as e:
         logger.error("remind_review failed for user %s: %s", telegram_id, e, exc_info=True)
         try:
-            await message.answer("⚠️ Не удалось отправить напоминание. Попробуй позже.")
+            await message.answer("⚠️ Произошла ошибка. Попробуй позже или обратись к куратору.")
         except Exception:
             logger.error("Failed to even send error message to user %s", telegram_id)
